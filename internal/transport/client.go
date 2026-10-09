@@ -61,7 +61,8 @@ func (c Client) exchange(ctx context.Context, message protocol.Message, timeout 
 			}
 			// Do not trust diagnostic strings returned by an arbitrary socket peer.
 			messages := map[string]string{
-				"duplicate_request":   "request ID is already pending",
+				"duplicate_request":   "request ID has already been used",
+				"history_unavailable": "history persistence failed; authorization denied",
 				"queue_full":          "pending queue is full",
 				"not_pending":         "request is unknown, expired, or no longer pending",
 				"unavailable":         "daemon is shutting down",

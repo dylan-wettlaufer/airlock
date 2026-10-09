@@ -76,7 +76,7 @@ func (c *Coordinator) Submit(r protocol.Request, wait time.Duration) (<-chan pro
 			if errors.As(err, &wire) && wire.Code == "duplicate_request" {
 				return nil, err
 			}
-			c.failed = true
+			c.failHistory()
 			return nil, protocol.Error("history_unavailable", "could not persist request history")
 		}
 	}
@@ -91,27 +91,52 @@ func (c *Coordinator) Submit(r protocol.Request, wait time.Duration) (<-chan pro
 	return e.result, nil
 }
 
-// finish is called only with the mutex held; the buffered result never blocks.
+// finish is called only with the mutex held. Commit the terminal state and its
+// event before removing the request or publishing a result to either client.
 func (c *Coordinator) finish(e *entry, state, reason string) (protocol.Result, error) {
-	delete(c.pending, e.pending.Request.RequestID)
-	if e.timer != nil {
-		e.timer.Stop()
-	}
 	permission := "deny"
 	if state == "allowed" {
 		permission = "allow"
 	}
 	r := protocol.Result{RequestID: e.pending.Request.RequestID, State: state, Permission: permission, Reason: reason}
-	var err error
 	if c.history != nil {
 		if c.history.RecordResult(r, c.now()) != nil {
-			c.failed = true
-			err = protocol.Error("history_unavailable", "could not persist terminal history; authorization denied")
-			r.State, r.Permission, r.Reason = "interrupted", "deny", "history persistence failed"
+			// The failed write may have an ambiguous commit outcome. Do not
+			// retry this transition or send an approval; restart recovers any
+			// record still pending. Deny every other waiter immediately too.
+			r = historyDenial(e)
+			c.publish(e, r)
+			c.failHistory()
+			return r, protocol.Error("history_unavailable", "could not persist terminal history; authorization denied")
 		}
 	}
+	c.publish(e, r)
+	return r, nil
+}
+
+// publish never blocks because each entry has one buffered terminal result.
+func (c *Coordinator) publish(e *entry, r protocol.Result) {
+	delete(c.pending, e.pending.Request.RequestID)
+	if e.timer != nil {
+		e.timer.Stop()
+	}
 	e.result <- r
-	return r, err
+}
+
+func historyDenial(e *entry) protocol.Result {
+	return protocol.Result{RequestID: e.pending.Request.RequestID, State: "interrupted", Permission: "deny", Reason: "history persistence failed"}
+}
+
+// failHistory is called with the mutex held. Safety denials are the only results
+// permitted without a durable commit. Do not perform further storage operations
+// after failure: they could delay denial of the remaining waiters. Startup
+// recovery interrupts any records still pending.
+func (c *Coordinator) failHistory() {
+	c.failed = true
+	for _, e := range c.pending {
+		r := historyDenial(e)
+		c.publish(e, r)
+	}
 }
 
 func (c *Coordinator) Decide(id, permission string) (protocol.Result, error) {
@@ -120,15 +145,17 @@ func (c *Coordinator) Decide(id, permission string) (protocol.Result, error) {
 	if permission != "allow" && permission != "deny" {
 		return protocol.Result{}, protocol.Error("invalid_decision", "decision must be allow or deny")
 	}
+	if c.failed {
+		return protocol.Result{}, protocol.Error("history_unavailable", "history persistence failed; authorization denied")
+	}
 	e := c.pending[id]
 	if e == nil {
 		return protocol.Result{}, protocol.Error("not_pending", "request is unknown or no longer pending")
 	}
-	if c.failed {
-		return c.finish(e, "interrupted", "history persistence failed")
-	}
 	if !c.now().Before(e.pending.Deadline) {
-		c.finish(e, "expired", "decision deadline expired")
+		if _, err := c.finish(e, "expired", "decision deadline expired"); err != nil {
+			return protocol.Result{}, err
+		}
 		return protocol.Result{}, protocol.Error("not_pending", "request deadline expired")
 	}
 	state := "denied"
@@ -152,9 +179,15 @@ func (c *Coordinator) List() []protocol.Pending {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	items := make([]protocol.Pending, 0, len(c.pending))
+	if c.failed {
+		return items
+	}
 	for _, e := range c.pending {
 		if !c.now().Before(e.pending.Deadline) {
 			c.finish(e, "expired", "decision deadline expired")
+			if c.failed {
+				return []protocol.Pending{}
+			}
 			continue
 		}
 		p := e.pending

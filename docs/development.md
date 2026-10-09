@@ -14,7 +14,8 @@ Source of scope and design: [implementation plan](../airlock-implementation-plan
 - Two concurrent hook processes with independently routed allow/deny, plus process-level expiry, cancellation, shutdown, and crash denial tests.
 
 - Persistent private SQLite history, versioned transactional migrations, agent/conversation sessions, decisions and lifecycle events, conservative command redaction, durable unique request IDs, and bounded `history` queries.
-- Atomic terminal audit writes before acknowledgment, failure denial, single-writer process locking, and interruption of pending records on restart.
+- Atomic terminal audit writes before acknowledgment or hook allowance, one winner across competing transitions, explicit duplicate-decision rejection, single-writer process locking, and interruption of pending records on restart.
+- Immediate denial of every pending waiter after admission or terminal persistence failure; gated-commit tests and injected SQLite COMMIT failures validate visibility, rollback, and socket responses.
 
 ## Remaining gates
 
