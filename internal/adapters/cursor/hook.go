@@ -23,7 +23,7 @@ type Input struct {
 	CursorVersion  string   `json:"cursor_version"`
 	WorkspaceRoots []string `json:"workspace_roots"`
 	Command        string   `json:"command"`
-	CWD            string   `json:"cwd"`
+	CWD            string   `json:"cwd"` // Empty means Cursor did not supply the command's working directory.
 	Sandbox        bool     `json:"sandbox"`
 }
 
@@ -55,8 +55,8 @@ func ReadInput(r io.Reader) (Input, error) {
 	if input.ConversationID == "" {
 		return input, errors.New("conversation_id is required")
 	}
-	if !filepath.IsAbs(input.CWD) {
-		return input, errors.New("cwd must be absolute")
+	if input.CWD != "" && !filepath.IsAbs(input.CWD) {
+		return input, errors.New("cwd must be absolute when supplied")
 	}
 	for _, root := range input.WorkspaceRoots {
 		if !filepath.IsAbs(root) {

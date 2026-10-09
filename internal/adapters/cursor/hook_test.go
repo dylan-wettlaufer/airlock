@@ -47,7 +47,7 @@ func TestRejectInvalidInput(t *testing.T) {
 			t.Errorf("accepted invalid payload of length %d", len(raw))
 		}
 	}
-	for _, field := range []string{"command", "conversation_id", "cwd", "hook_event_name"} {
+	for _, field := range []string{"command", "conversation_id", "hook_event_name"} {
 		t.Run(field, func(t *testing.T) {
 			var fields map[string]json.RawMessage
 			if err := json.Unmarshal(fixture(t), &fields); err != nil {
@@ -62,5 +62,60 @@ func TestRejectInvalidInput(t *testing.T) {
 				t.Fatal("accepted missing required field")
 			}
 		})
+	}
+}
+
+func TestUnknownCWD(t *testing.T) {
+	data, err := os.ReadFile("../../../testdata/cursor/before-shell-execution-empty-cwd.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, roots := range [][]string{{"/tmp/airlock-disposable"}, {"/tmp/first", "/tmp/second"}, nil} {
+		for _, omit := range []bool{false, true} {
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(data, &fields); err != nil {
+				t.Fatal(err)
+			}
+			if omit {
+				delete(fields, "cwd")
+			}
+			fields["workspace_roots"], err = json.Marshal(roots)
+			if err != nil {
+				t.Fatal(err)
+			}
+			payload, err := json.Marshal(fields)
+			if err != nil {
+				t.Fatal(err)
+			}
+			input, err := ReadInput(strings.NewReader(string(payload)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			proposal, err := input.Proposal()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if proposal.CWD != "" {
+				t.Fatal("unknown cwd must not be inferred from workspace roots")
+			}
+			if len(proposal.WorkspaceRoots) != len(roots) {
+				t.Fatal("workspace roots changed")
+			}
+		}
+	}
+}
+
+func TestRejectRelativeCWD(t *testing.T) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(fixture(t), &fields); err != nil {
+		t.Fatal(err)
+	}
+	fields["cwd"] = json.RawMessage(`"relative/path"`)
+	data, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadInput(strings.NewReader(string(data))); err == nil {
+		t.Fatal("accepted relative cwd")
 	}
 }

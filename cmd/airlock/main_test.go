@@ -18,6 +18,10 @@ func TestHookProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	emptyCWD, err := os.ReadFile("../../testdata/cursor/before-shell-execution-empty-cwd.json")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, test := range []struct {
 		name    string
 		args    []string
@@ -26,6 +30,8 @@ func TestHookProcess(t *testing.T) {
 	}{
 		{"deny", []string{"--spike"}, string(payload), "deny"},
 		{"allow", []string{"--spike", "--decision", "allow"}, string(payload), "allow"},
+		{"captured empty cwd allow", []string{"--spike", "--decision", "allow"}, string(emptyCWD), "allow"},
+		{"captured empty cwd deny", []string{"--spike"}, string(emptyCWD), "deny"},
 		{"default closed", nil, string(payload), "deny"},
 		{"allow requires spike", []string{"--decision", "allow"}, string(payload), "deny"},
 		{"malformed input", []string{"--spike", "--decision", "allow"}, "{", "deny"},

@@ -13,6 +13,6 @@ type Request struct {
 	SourceToolCallID *string  `json:"source_tool_call_id"`
 	Event            string   `json:"event"`
 	Command          string   `json:"command"`
-	CWD              string   `json:"cwd"`
+	CWD              string   `json:"cwd"` // Empty means unknown; workspace roots are not a substitute.
 	WorkspaceRoots   []string `json:"workspace_roots"`
 }

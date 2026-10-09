@@ -1,0 +1,8 @@
+{
+  "hook_event_name": "beforeShellExecution",
+  "conversation_id": "sanitized-captured-session-1",
+  "cursor_version": "3.23.12",
+  "command": "printf 'airlock-test\\n'",
+  "cwd": "",
+  "workspace_roots": ["/tmp/airlock-disposable"]
+}
