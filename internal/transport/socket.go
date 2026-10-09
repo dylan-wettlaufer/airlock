@@ -229,6 +229,15 @@ func (s *Server) handle(conn net.Conn) {
 			}
 		}
 		_ = send(conn, protocol.Response{Type: "list"})
+	case "snapshot":
+		snapshot, err := s.queue.Snapshot()
+		if err != nil {
+			sendError(conn, err)
+			return
+		}
+		_ = sendSnapshot(conn, snapshot, nil)
+	case "subscribe":
+		s.subscribe(conn, reader)
 	case "decide":
 		r, err := s.queue.Decide(m.RequestID, m.Permission)
 		if err != nil {

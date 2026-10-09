@@ -2,7 +2,7 @@
 
 A local terminal approval inbox for coding agents, with explainable command warnings and an audit trail.
 
-**Current status: manual decisions with persistent SQLite history.** Hooks wait for individual decisions through `list` and `decide`. Local process tests prove two concurrent hooks receive their own results. Live concurrent review, expiry, offline fallback, and a native Cursor prompt after Airlock allowance are now user-reported. Cursor can require its own approval after Airlock approval. SQLite history is implemented; the analyzer and terminal UI remain planned. The full compatibility gate remains partial pending configuration details and remaining failure observations. See the [compatibility record](docs/compatibility.md) and [implementation plan](airlock-implementation-plan.md).
+**Current status: manual decisions with persistent SQLite history.** Hooks wait for individual decisions through `list` and `decide`. Consistent snapshots and sequenced live subscriptions are implemented for the upcoming terminal UI. Local process tests prove two concurrent hooks receive their own results. Live concurrent review, expiry, offline fallback, and a native Cursor prompt after Airlock allowance are now user-reported. Cursor can require its own approval after Airlock approval. SQLite history is implemented; the analyzer and terminal UI remain planned. The full compatibility gate remains partial pending configuration details and remaining failure observations. See the [compatibility record](docs/compatibility.md) and [implementation plan](airlock-implementation-plan.md).
 
 ## Development setup
 
@@ -115,4 +115,4 @@ docs/                      compatibility gate and milestone tracking
 
 The current flow is hook → private Unix socket → daemon ↔ CLI review. The terminal UI comes later. Authorization is separate from observed execution; no execution observation, rollback, or filesystem preview is provided.
 
-Retention and the isolated 100-request reliability experiment are complete; see [measured results](docs/reliability.md). Next: snapshot/subscription support for the terminal UI, then stable selection, countdowns, keyboard decisions and reconnect behavior. Live Cursor compatibility evidence remains a separate gate. See [development milestones](docs/development.md).
+Retention and the isolated 100-request reliability experiment are complete; see [measured results](docs/reliability.md). Snapshot/subscription support for the terminal UI is implemented. Next: the terminal screen with stable selection, countdowns, keyboard decisions and reconnect behavior. Live Cursor compatibility evidence remains a separate gate. See [development milestones](docs/development.md).

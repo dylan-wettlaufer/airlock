@@ -23,12 +23,14 @@ Source of scope and design: [implementation plan](../airlock-implementation-plan
 - Fixed-seed, 100-request reliability harness with isolated sockets/SQLite, conflicting decisions, disconnects, expiry, real process crash/restart, audit agreement and permanent ID checks after count/age pruning. See [measured results and rerun command](reliability.md).
 - October 9 user-reported manual Airlock checks: redaction, duplicate-decision rejection, same-socket crash recovery, completed-history preservation, count/age pruning and rejection of pruned IDs. These observations do not complete native Cursor validation.
 
+- Atomic stamped queue snapshots and bounded subscriptions, with process-lifetime epochs, contiguous admission/terminal events, commit-before-event publication, disconnect cleanup and a validated transport client. Tests cover snapshot/decision races, mutable-field isolation, overflow without blocked decisions, subscriber limits, commit gates/failure, large snapshots, idle cancellation, invalid streams and fresh synchronization after reconnect/restart.
+
 ## Remaining gates
 
 0. **Integration spike:** run and document the live Cursor matrix. Setup alone does not complete this milestone.
 1. **Vertical slice: implemented and locally verified, with live user-reported coverage.** Foreground daemon; versioned bounded NDJSON over a private Unix socket; submit/list/decide CLI; two concurrent waiting hooks with correctly routed results. The October 9 report covers concurrent live review, expiry, offline fallback, denial of pending commands on shutdown, and a native approval prompt after Airlock allowance. The full compatibility gate still needs configuration details, session cancellation process-exit confirmation, and measured timing.
 2. **Reliable coordinator: SQLite history implemented and locally tested.** Durable transitions, migrations, deadlines, cancellation, unique IDs across restarts, recovery, private files, single-writer locking, and redaction are implemented. Age/count retention with permanent ID reservation is implemented. The 100-request stress experiment and isolated process restart validation pass. Native Cursor crash/restart evidence remains separate.
-3. **TUI:** next implement snapshot/subscription support with sequencing; then pin compatible Bubble Tea packages and build queue/details, stable selection, countdowns, keyboard decisions and reconnect behavior.
+3. **TUI:** snapshot/subscription support with sequencing is implemented. Next pin compatible Bubble Tea packages and build queue/details, stable selection, countdowns, keyboard decisions and reconnect behavior (invalidate cached state, disable decisions while disconnected, retry with backoff, replace state on a fresh snapshot).
 4. **Analysis:** pin the shell syntax parser; walk full ASTs, implement warning families, label candidate paths and unresolved effects, bound resources, never evaluate input.
 5. **Release:** real compatibility smoke tests, installation/doctor, fixture queue demo and history, CI, measured stress experiment, and tagged binaries.
 

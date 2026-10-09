@@ -2,6 +2,8 @@
 package coordinator
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"sort"
 	"sync"
@@ -19,12 +21,15 @@ type entry struct {
 }
 
 type Coordinator struct {
-	mu      sync.Mutex
-	pending map[string]*entry
-	closed  bool
-	history Recorder
-	failed  bool
-	now     func() time.Time
+	mu          sync.Mutex
+	pending     map[string]*entry
+	closed      bool
+	history     Recorder
+	failed      bool
+	now         func() time.Time
+	epoch       string
+	sequence    uint64
+	subscribers map[*subscriber]struct{}
 }
 
 // Recorder commits audit records before a proposal or terminal result is visible.
@@ -58,7 +63,13 @@ func NewWithHistory(history Recorder) *Coordinator {
 	return c
 }
 
-func New() *Coordinator { return &Coordinator{pending: make(map[string]*entry), now: time.Now} }
+func New() *Coordinator {
+	var epoch [16]byte
+	if _, err := rand.Read(epoch[:]); err != nil {
+		panic("could not generate coordinator stream epoch")
+	}
+	return &Coordinator{pending: make(map[string]*entry), now: time.Now, epoch: hex.EncodeToString(epoch[:]), subscribers: make(map[*subscriber]struct{})}
+}
 
 // Submit copies mutable fields so callers cannot change an outstanding proposal.
 func (c *Coordinator) Submit(r protocol.Request, wait time.Duration) (<-chan protocol.Result, error) {
@@ -100,6 +111,7 @@ func (c *Coordinator) Submit(r protocol.Request, wait time.Duration) (<-chan pro
 		}
 	}
 	c.pending[r.RequestID] = e
+	c.emit(protocol.QueueEvent{Pending: &e.pending})
 	e.timer = time.AfterFunc(max(e.pending.Deadline.Sub(c.now()), 0), func() {
 		c.mu.Lock()
 		defer c.mu.Unlock()
@@ -124,7 +136,6 @@ func (c *Coordinator) finish(e *entry, state, reason string) (protocol.Result, e
 			// retry this transition or send an approval; restart recovers any
 			// record still pending. Deny every other waiter immediately too.
 			r = historyDenial(e)
-			c.publish(e, r)
 			c.failHistory()
 			return r, protocol.Error("history_unavailable", "could not persist terminal history; authorization denied")
 		}
@@ -139,6 +150,7 @@ func (c *Coordinator) publish(e *entry, r protocol.Result) {
 	if e.timer != nil {
 		e.timer.Stop()
 	}
+	c.emit(protocol.QueueEvent{Result: &r})
 	e.result <- r
 }
 
@@ -152,6 +164,7 @@ func historyDenial(e *entry) protocol.Result {
 // recovery interrupts any records still pending.
 func (c *Coordinator) failHistory() {
 	c.failed = true
+	c.stopSubscribers(protocol.Error("history_unavailable", "history persistence failed; authorization denied"))
 	for _, e := range c.pending {
 		r := historyDenial(e)
 		c.publish(e, r)
@@ -197,6 +210,11 @@ func (c *Coordinator) Cancel(id string, result <-chan protocol.Result) {
 func (c *Coordinator) List() []protocol.Pending {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.list()
+}
+
+// list is called with the coordinator mutex held.
+func (c *Coordinator) list() []protocol.Pending {
 	items := make([]protocol.Pending, 0, len(c.pending))
 	if c.failed {
 		return items
@@ -209,13 +227,7 @@ func (c *Coordinator) List() []protocol.Pending {
 			}
 			continue
 		}
-		p := e.pending
-		p.Request.WorkspaceRoots = append([]string(nil), p.Request.WorkspaceRoots...)
-		if p.Request.SourceToolCallID != nil {
-			id := *p.Request.SourceToolCallID
-			p.Request.SourceToolCallID = &id
-		}
-		items = append(items, p)
+		items = append(items, e.pending.Clone())
 	}
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].ReceivedAt.Equal(items[j].ReceivedAt) {
@@ -233,4 +245,5 @@ func (c *Coordinator) Close() {
 	for _, e := range c.pending {
 		c.finish(e, "interrupted", "daemon shutting down")
 	}
+	c.stopSubscribers(protocol.Error("unavailable", "daemon is shutting down"))
 }

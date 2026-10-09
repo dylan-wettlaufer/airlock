@@ -41,14 +41,16 @@ type Result struct {
 	Reason     string `json:"reason"`
 }
 
-// List sends zero or more pending frames followed by a list frame. This keeps
-// every frame bounded even when the queue contains many large commands.
+// Response carries one bounded frame. List and snapshot send individual pending
+// items; subscriptions continue with sequenced queue events.
 type Response struct {
-	ProtocolVersion int        `json:"protocol_version"`
-	Type            string     `json:"type"`
-	Pending         *Pending   `json:"pending,omitempty"`
-	Result          *Result    `json:"result,omitempty"`
-	Error           *WireError `json:"error,omitempty"`
+	ProtocolVersion int         `json:"protocol_version"`
+	Type            string      `json:"type"`
+	Pending         *Pending    `json:"pending,omitempty"`
+	Result          *Result     `json:"result,omitempty"`
+	Error           *WireError  `json:"error,omitempty"`
+	Cursor          *Cursor     `json:"cursor,omitempty"`
+	Event           *QueueEvent `json:"event,omitempty"`
 }
 
 type WireError struct {
@@ -100,7 +102,7 @@ func (m Message) Validate() error {
 		if m.RequestID == "" || (m.Permission != "allow" && m.Permission != "deny") || m.Request != nil || m.WaitMS != 0 {
 			return Error("invalid_message", "decision requires a request ID and allow or deny")
 		}
-	case "list", "health":
+	case "list", "health", "snapshot", "subscribe":
 		if m.Request != nil || m.RequestID != "" || m.Permission != "" || m.WaitMS != 0 {
 			return Error("invalid_message", "unexpected operation fields")
 		}

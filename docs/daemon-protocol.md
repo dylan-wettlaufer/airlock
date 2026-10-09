@@ -58,3 +58,80 @@ The daemon defaults to a 720-hour age limit and 10,000 completed records. `--his
 Schema version 2 backfills a permanent ID-only registry before startup pruning. Every accepted request reserves its ID transactionally; a failed admission does not reserve it. Pruning never removes reservations, so a pruned ID still returns `duplicate_request` without reintroducing the proposal, replaying an allowance, or recreating session metadata. History queries for pruned records return no details, and decisions on those IDs return `not_pending` while the daemon is healthy.
 
 Pruning runs after startup recovery, inside request/terminal writes, and hourly when idle. Write-time pruning must commit along with the state/event before acknowledgment. Any pruning failure enters the same persistence-failure denial path. Idle-maintenance failure stops the server after denying waiters and joins the maintenance worker before releasing database and socket ownership. A stopped daemon does not prune; read-only history never performs maintenance. The permanent ID registry and SQLite's reusable allocated pages mean these are detailed-history limits rather than a hard file-size limit.
+
+## Queue snapshots and subscriptions
+
+Protocol version 1 adds two operations without changing existing submit/list/
+decide/health responses. An older daemon rejects these operations; the UI must
+report the incompatibility rather than treating a plain list as a live stream.
+
+```json
+{"protocol_version":1,"type":"snapshot"}
+{"protocol_version":1,"type":"subscribe"}
+```
+
+Both begin with a consistent queue snapshot, ordered by receipt time and ID:
+
+```json
+{"protocol_version":1,"type":"snapshot_begin","cursor":{"epoch":"0123456789abcdef0123456789abcdef","sequence":7}}
+{"protocol_version":1,"type":"pending","pending":{"request":{"protocol_version":1,"request_id":"fixture-one","agent":"fixture","agent_version":"synthetic","conversation_id":"sanitized-chat","source_tool_call_id":null,"event":"before_shell_execution","command":"fixture-proposal","cwd":"","workspace_roots":[]},"received_at":"2026-10-09T19:00:00Z","deadline":"2026-10-09T19:00:25Z"}}
+{"protocol_version":1,"type":"snapshot","cursor":{"epoch":"0123456789abcdef0123456789abcdef","sequence":7}}
+```
+
+This is a synthetic example. An empty queue has only the two boundary frames.
+Items use separate frames, allowing a complete snapshot larger than 2 MiB while
+preserving the frame limit. Begin/end cursors must match. Consumers install a
+snapshot only after its complete ending frame; a partial snapshot is unusable.
+An expired proposal is removed before snapshot capture. A failed or shutting-down
+coordinator rejects synchronization instead of presenting an apparently healthy
+empty queue.
+
+`snapshot` then closes. `subscribe` stays open and sends one event per admitted
+proposal or terminal transition:
+
+```json
+{"protocol_version":1,"type":"event","event":{"cursor":{"epoch":"0123456789abcdef0123456789abcdef","sequence":8},"result":{"request_id":"fixture-one","state":"denied","permission":"deny","reason":"manual decision"}}}
+```
+
+An admission event has `pending` instead of `result`, with the same shape as a
+snapshot item. Exactly one payload is present. Requests are immutable after
+admission, so these two event shapes describe every queue change. Normal events
+follow the same SQLite commit-before-publication rule as submit/decide. They do
+not prove delivery to a hook or execution. Storage failure invalidates observers
+before safety denials; those exceptional uncommitted denials are not published as
+normal durable queue events.
+
+Snapshot capture and observer registration happen under one coordinator lock.
+Transitions that happen during snapshot transmission are buffered and follow its
+ending frame. Every queue change advances the process-local sequence by one,
+even without connected subscribers; rejected duplicates/decisions and successful
+retention maintenance do not advance it. The first event after a snapshot must
+have `sequence = snapshot.sequence + 1`. A fresh random 32-hex-digit epoch identifies
+each coordinator lifetime, and sequence starts at zero. Neither value is persisted
+or an audit offset.
+
+The daemon allows eight subscribers, each with 16 buffered events. A full buffer
+invalidates and removes that observer immediately without waiting for socket I/O
+or slowing hook decisions. The connection closes; individual writes are bounded
+to two seconds. New subscribers beyond the limit receive `subscriber_limit`.
+Overflow, malformed frames, gaps, repeated sequences, changed epochs, storage
+failure, shutdown or any disconnect invalidate the UI's current view. Any client
+input after the subscription request also closes that connection. Disconnecting
+an observer never cancels proposals owned by separate submitting connections.
+
+The transport API is `Client.Snapshot(ctx)` and
+`Client.Subscribe(ctx, onSnapshot, onEvent)`. Callbacks run synchronously on the
+calling goroutine; hand off promptly to a bounded UI queue and honor cancellation.
+Initial synchronization has a two-second client deadline; a healthy idle stream
+has no read timeout. Context cancellation closes it. The client validates all
+frames, snapshot order/uniqueness and timestamps, epoch/sequence continuity,
+admission bounds and terminal membership before delivering callbacks.
+
+On any subscription return, mark the UI disconnected and disable decisions against
+its cached view. Retry with backoff by calling `Subscribe` again and replace the
+entire queue when its fresh snapshot arrives. The transport deliberately leaves
+retry timing and disconnected presentation to the UI. There is no resume cursor,
+event replay or automatic decision retry. Within a live daemon, a reconnect sees
+the current sequence; after restart it sees a new epoch and the recovered queue,
+which never restores interrupted approvals. Use the full immutable request ID
+for decisions and continue to rely on coordinator deadline checks.

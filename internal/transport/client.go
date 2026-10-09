@@ -19,17 +19,11 @@ func (c Client) exchange(ctx context.Context, message protocol.Message, timeout 
 	if err := message.Validate(); err != nil {
 		return err
 	}
-	if err := validateSocket(c.Socket); err != nil {
-		return err
-	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", c.Socket)
+	conn, err := c.connect(ctx)
 	if err != nil {
-		if ctx.Err() == nil && (errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, os.ErrNotExist)) {
-			return ErrDaemonNotRunning
-		}
-		return errors.New("daemon connection failed")
+		return err
 	}
 	defer conn.Close()
 	done := make(chan struct{})
@@ -52,34 +46,11 @@ func (c Client) exchange(ctx context.Context, message protocol.Message, timeout 
 		if err := protocol.ReadFrame(reader, &response); err != nil {
 			return errors.New("daemon disconnected or returned an invalid response")
 		}
-		if response.ProtocolVersion != protocol.Version {
-			return errors.New("unsupported daemon response version")
+		if err := responseError(response); err != nil {
+			return err
 		}
-		if response.Type == "error" {
-			if response.Error == nil || response.Error.Code == "" || response.Result != nil || response.Pending != nil {
-				return errors.New("invalid daemon error response")
-			}
-			// Do not trust diagnostic strings returned by an arbitrary socket peer.
-			messages := map[string]string{
-				"duplicate_request":   "request ID has already been used",
-				"history_unavailable": "history persistence failed; authorization denied",
-				"queue_full":          "pending queue is full",
-				"not_pending":         "request is unknown, expired, or no longer pending",
-				"unavailable":         "daemon is shutting down",
-				"unsupported_version": "unsupported protocol version",
-				"invalid_request":     "invalid proposal",
-				"invalid_message":     "invalid daemon operation",
-				"frame_too_large":     "frame exceeds 2 MiB",
-				"invalid_frame":       "invalid JSON frame",
-			}
-			message, ok := messages[response.Error.Code]
-			if !ok {
-				message = "daemon rejected request"
-			}
-			return protocol.Error(response.Error.Code, message)
-		}
-		if response.Error != nil {
-			return errors.New("invalid daemon response")
+		if response.Cursor != nil || response.Event != nil {
+			return errors.New("unexpected stream metadata")
 		}
 		finished, err := consume(response)
 		if err != nil {
@@ -152,4 +123,58 @@ func (c Client) Health(ctx context.Context) error {
 		}
 		return true, nil
 	})
+}
+
+func (c Client) connect(ctx context.Context) (net.Conn, error) {
+	if err := validateSocket(c.Socket); err != nil {
+		return nil, err
+	}
+	dialCtx, cancel := context.WithTimeout(ctx, ioTimeout)
+	defer cancel()
+	conn, err := (&net.Dialer{}).DialContext(dialCtx, "unix", c.Socket)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, os.ErrNotExist) {
+			return nil, ErrDaemonNotRunning
+		}
+		return nil, errors.New("daemon connection failed")
+	}
+	return conn, nil
+}
+
+func responseError(response protocol.Response) error {
+	if response.ProtocolVersion != protocol.Version {
+		return errors.New("unsupported daemon response version")
+	}
+	if response.Type == "error" {
+		if response.Error == nil || response.Error.Code == "" || response.Result != nil || response.Pending != nil || response.Cursor != nil || response.Event != nil {
+			return errors.New("invalid daemon error response")
+		}
+		// Never echo diagnostic strings supplied by a socket peer.
+		messages := map[string]string{
+			"duplicate_request":   "request ID has already been used",
+			"history_unavailable": "history persistence failed; authorization denied",
+			"queue_full":          "pending queue is full",
+			"not_pending":         "request is unknown, expired, or no longer pending",
+			"unavailable":         "daemon is shutting down",
+			"unsupported_version": "unsupported protocol version",
+			"invalid_request":     "invalid proposal",
+			"invalid_message":     "invalid daemon operation",
+			"frame_too_large":     "frame exceeds 2 MiB",
+			"invalid_frame":       "invalid JSON frame",
+			"subscriber_limit":    "too many subscribers",
+			"resync_required":     "subscriber fell behind; reconnect for a fresh snapshot",
+		}
+		message, ok := messages[response.Error.Code]
+		if !ok {
+			message = "daemon rejected request"
+		}
+		return protocol.Error(response.Error.Code, message)
+	}
+	if response.Error != nil {
+		return errors.New("invalid daemon response")
+	}
+	return nil
 }

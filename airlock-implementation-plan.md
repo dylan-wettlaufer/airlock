@@ -2,7 +2,7 @@
 
 Prepared October 8, 2026. This is a proposed design, informed by the supplied outline and current primary documentation. The integrations have not been exercised against the installed agents.
 
-Implementation update: Milestone 1's in-memory daemon and submit/list/decide flow is implemented with local process and race-detector coverage. The user authorized proceeding with partial Cursor spike evidence; approval-requiring commands and the live daemon smoke test remain open compatibility checks. The durable coordinator, TUI, and analyzer below remain future design. See [development status](docs/development.md) and [compatibility evidence](docs/compatibility.md).
+Implementation update: the daemon, submit/list/decide flow, durable SQLite history, retention, restart recovery, isolated 100-request reliability experiment and atomic snapshot/subscription support are implemented with local process and race-detector coverage. The terminal screen and analyzer remain future work. The user authorized proceeding with partial Cursor evidence; exact settings, process-exit cancellation, timeout margin and native crash/restart observations remain separate live compatibility gates. See [development status](docs/development.md), [reliability measurements](docs/reliability.md) and [compatibility evidence](docs/compatibility.md).
 
 ## Recommendation
 
