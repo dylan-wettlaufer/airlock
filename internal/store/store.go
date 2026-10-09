@@ -21,14 +21,16 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-const SchemaVersion = 1
+const SchemaVersion = 2
 const MaxLimit = 200
 const MaxOffset = 10000
 
 // Store owns one serialized SQL connection and, for writers, a process lock.
 type Store struct {
-	db   *sql.DB
-	lock *os.File
+	db        *sql.DB
+	lock      *os.File
+	retention Retention
+	writer    bool
 }
 
 func DefaultPath() (string, error) {
@@ -81,12 +83,20 @@ func createFile(path string) (*os.File, error) {
 
 // Open creates/migrates a writer and recovers pending records. Only one daemon
 // may own a history database, even if daemons use different sockets.
-func Open(path string) (*Store, error) { return open(path, true) }
+func Open(path string) (*Store, error) { return OpenWithRetention(path, DefaultRetention()) }
+
+// OpenWithRetention uses a validated policy for automatic pruning.
+func OpenWithRetention(path string, retention Retention) (*Store, error) {
+	if err := retention.Validate(); err != nil {
+		return nil, err
+	}
+	return open(path, true, retention)
+}
 
 // Read opens existing history without creating files, migrating, or recovery.
-func Read(path string) (*Store, error) { return open(path, false) }
+func Read(path string) (*Store, error) { return open(path, false, Retention{}) }
 
-func open(path string, writer bool) (*Store, error) {
+func open(path string, writer bool, retention Retention) (*Store, error) {
 	if !filepath.IsAbs(path) {
 		return nil, errors.New("history database path must be absolute")
 	}
@@ -106,7 +116,7 @@ func open(path string, writer bool) (*Store, error) {
 		return nil, err
 	}
 	path = filepath.Join(canonical, filepath.Base(path))
-	s := &Store{}
+	s := &Store{writer: writer, retention: retention}
 	success := false
 	defer func() {
 		if !success {
@@ -188,6 +198,9 @@ func open(path string, writer bool) (*Store, error) {
 		if err := s.recover(); err != nil {
 			return nil, err
 		}
+		if err := s.Prune(time.Now()); err != nil {
+			return nil, err
+		}
 	} else if version != SchemaVersion {
 		return nil, errors.New("history schema requires daemon migration")
 	}
@@ -252,11 +265,14 @@ func (s *Store) RecordPending(p protocol.Pending) error {
 	// Check uniqueness before touching session timestamps. The constraint also
 	// protects this invariant if another writer ever bypasses the process lock.
 	var existing string
-	err = tx.QueryRow("SELECT request_id FROM actions WHERE request_id=?", r.RequestID).Scan(&existing)
+	err = tx.QueryRow("SELECT request_id FROM used_request_ids WHERE request_id=?", r.RequestID).Scan(&existing)
 	if err == nil {
-		return protocol.Error("duplicate_request", "request ID already exists in history")
+		return protocol.Error("duplicate_request", "request ID has already been used")
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if _, err := tx.Exec("INSERT INTO used_request_ids(request_id) VALUES(?)", r.RequestID); err != nil {
 		return err
 	}
 	at := timestamp(p.ReceivedAt)
@@ -272,6 +288,9 @@ func (s *Store) RecordPending(p protocol.Pending) error {
 		return err
 	}
 	if _, err := tx.Exec("INSERT INTO action_events(request_id,state,reason,occurred_at) VALUES(?,'pending','request received',?)", r.RequestID, at); err != nil {
+		return err
+	}
+	if err := s.prune(tx, p.ReceivedAt); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -303,6 +322,9 @@ func (s *Store) RecordResult(r protocol.Result, at time.Time) error {
 		}
 	}
 	if _, err := tx.Exec("INSERT INTO action_events(request_id,state,reason,occurred_at) VALUES(?,?,?,?)", r.RequestID, r.State, r.Reason, timestamp(at)); err != nil {
+		return err
+	}
+	if err := s.prune(tx, at); err != nil {
 		return err
 	}
 	return tx.Commit()

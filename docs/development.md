@@ -18,11 +18,13 @@ Source of scope and design: [implementation plan](../airlock-implementation-plan
 - Immediate denial of every pending waiter after admission or terminal persistence failure; gated-commit tests and injected SQLite COMMIT failures validate visibility, rollback, and socket responses.
 - Exclusive socket ownership before database recovery, safe stale-socket replacement after successful recovery, startup failure cleanup, and process tests for crash/restart on the same endpoint, preserved completed history, and fresh hook decisions.
 
+- Automatic completed-history retention by age and count, version-2 migration backfilling a permanent ID registry, pruning of dependent metadata, hourly idle maintenance, and transaction rollback/duplicate protection tests.
+
 ## Remaining gates
 
 0. **Integration spike:** run and document the live Cursor matrix. Setup alone does not complete this milestone.
 1. **Vertical slice: implemented and locally verified, with live user-reported coverage.** Foreground daemon; versioned bounded NDJSON over a private Unix socket; submit/list/decide CLI; two concurrent waiting hooks with correctly routed results. The October 9 report covers concurrent live review, expiry, offline fallback, denial of pending commands on shutdown, and a native approval prompt after Airlock allowance. The full compatibility gate still needs configuration details, session cancellation process-exit confirmation, and measured timing.
-2. **Reliable coordinator: SQLite history implemented and locally tested.** Durable transitions, migrations, deadlines, cancellation, unique IDs across restarts, recovery, private files, single-writer locking, and redaction are implemented. Retention, expanded stress measurements, and live restart validation remain.
+2. **Reliable coordinator: SQLite history implemented and locally tested.** Durable transitions, migrations, deadlines, cancellation, unique IDs across restarts, recovery, private files, single-writer locking, and redaction are implemented. Age/count retention with permanent ID reservation is implemented. Expanded stress measurements and live restart validation remain.
 3. **TUI:** pin compatible Bubble Tea packages; queue/details/countdowns, stable selection, decisions, snapshot/subscription sequencing and reconnect.
 4. **Analysis:** pin the shell syntax parser; walk full ASTs, implement warning families, label candidate paths and unresolved effects, bound resources, never evaluate input.
 5. **Release:** real compatibility smoke tests, installation/doctor, fixture queue demo and history, CI, measured stress experiment, and tagged binaries.

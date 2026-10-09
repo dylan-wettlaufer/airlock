@@ -63,6 +63,8 @@ func usage(w io.Writer) {
 
 Usage: airlock <subcommand>
   daemon [--socket PATH] [--wait 25s] [--database PATH]  Run the foreground daemon
+       [--history-max-age 720h] [--history-max-records 10000]
+                              Bound completed history; keep request IDs reserved
   hook --agent cursor          Wait for a daemon decision; defer to Cursor if stopped
        [--socket PATH] [--wait 25s]  Override socket or shorten the wait
   submit [--socket PATH] [--wait 25s]  Submit a protocol request from stdin

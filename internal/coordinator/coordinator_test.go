@@ -200,6 +200,7 @@ type failingRecorder struct{ pendingErr, resultErr error }
 
 func (f *failingRecorder) RecordPending(protocol.Pending) error          { return f.pendingErr }
 func (f *failingRecorder) RecordResult(protocol.Result, time.Time) error { return f.resultErr }
+func (f *failingRecorder) Prune(time.Time) error                         { return nil }
 
 func TestHistoryFailureNeverAllows(t *testing.T) {
 	recorder := &failingRecorder{pendingErr: errors.New("synthetic storage failure")}

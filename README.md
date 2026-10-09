@@ -69,7 +69,17 @@ Exact commands stay in memory for pending review. History retains only the execu
 
 Only one terminal transition wins, including competing decisions, expiry, cancellation, and shutdown. Repeated decisions return `not_pending` for either the same or opposite choice, including after restart; they never alter history or replay approval. Identical and conflicting resubmissions both return `duplicate_request` without changing the original proposal.
 
-Queries return newest requests first, with a request-ID tie break. The default limit is 50, the maximum is 200, and offsets are bounded to 0–10000. Filters match exact request ID, agent, conversation, or state. JSON includes decision and event details; text escapes terminal control characters. Query limits bound each response; automatic retention is still planned before release.
+Queries return newest requests first, with a request-ID tie break. The default limit is 50, the maximum is 200, and offsets are bounded to 0–10000. Filters match exact request ID, agent, conversation, or state. JSON includes decision and event details; text escapes terminal control characters.
+
+The default retention limits for completed history are **30 days** and **10,000 records**. Age is measured from the terminal timestamp, not receipt; records exactly at the age boundary remain until the next pass. The count limit keeps the newest completions, breaking ties by descending request ID. Pending requests are never pruned and do not count against the completed-record limit.
+
+```sh
+./bin/airlock daemon --history-max-age 168h --history-max-records 5000
+```
+
+Both limits must be positive; record limits range from 1 to 1,000,000. Go duration syntax uses hours (`720h` is 30 days). The policy applies at startup after migration/recovery, within admission and terminal transactions, and hourly while the daemon is idle. Age-expired records can remain until the next maintenance pass. With no running daemon, pruning waits until the next startup; `history` remains read-only. A pruning failure rolls back its transaction, denies pending waiters, and blocks authorization. An idle-maintenance failure also stops the daemon after delivering safety denials.
+
+Pruning deletes old actions, decisions, events, and sessions with no retained actions. Migration version 2 first reserves every existing request ID in a permanent minimal registry; each new admission reserves its ID in the same transaction as the request. The registry stores only IDs and is never pruned, so identical or conflicting reuse still returns `duplicate_request` after the detailed history is gone, including after restart. Detailed history is bounded; the ID registry continues growing. SQLite reuses freed pages, so these limits do not impose a fixed database byte size. Increasing limits later does not restore pruned details.
 
 ## Hook probe
 

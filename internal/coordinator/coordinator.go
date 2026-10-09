@@ -31,6 +31,25 @@ type Coordinator struct {
 type Recorder interface {
 	RecordPending(protocol.Pending) error
 	RecordResult(protocol.Result, time.Time) error
+	Prune(time.Time) error
+}
+
+// PruneHistory serializes idle maintenance with decisions. Failure denies all
+// waiters just like a failed admission or terminal commit.
+func (c *Coordinator) PruneHistory() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.failed {
+		return protocol.Error("history_unavailable", "history persistence failed; authorization denied")
+	}
+	if c.closed {
+		return protocol.Error("unavailable", "daemon is shutting down")
+	}
+	if c.history != nil && c.history.Prune(c.now()) != nil {
+		c.failHistory()
+		return protocol.Error("history_unavailable", "could not prune history; authorization denied")
+	}
+	return nil
 }
 
 func NewWithHistory(history Recorder) *Coordinator {

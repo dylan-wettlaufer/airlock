@@ -23,8 +23,11 @@ func socketCommand(ctx context.Context, command string, args []string, in io.Rea
 	wait := protocol.DefaultWait
 	jsonOutput := false
 	database := ""
+	retention := store.DefaultRetention()
 	if command == "daemon" {
 		flags.StringVar(&database, "database", "", "persistent history database path")
+		flags.DurationVar(&retention.MaxAge, "history-max-age", retention.MaxAge, "maximum age of completed history (default 720h)")
+		flags.IntVar(&retention.MaxRecords, "history-max-records", retention.MaxRecords, "maximum completed history records (1..1000000)")
 	}
 	if command == "daemon" || command == "submit" {
 		flags.DurationVar(&wait, "wait", protocol.DefaultWait, "maximum wait (1ms through 24h)")
@@ -49,6 +52,9 @@ func socketCommand(ctx context.Context, command string, args []string, in io.Rea
 	client := transport.Client{Socket: *socket}
 	switch command {
 	case "daemon":
+		if err := retention.Validate(); err != nil {
+			return fail(err)
+		}
 		if database == "" {
 			var err error
 			database, err = store.DefaultPath()
@@ -61,7 +67,7 @@ func socketCommand(ctx context.Context, command string, args []string, in io.Rea
 			return fail(err)
 		}
 		defer daemonLock.Close()
-		history, err := store.Open(database)
+		history, err := store.OpenWithRetention(database, retention)
 		if err != nil {
 			return fail(err)
 		}
@@ -72,8 +78,8 @@ func socketCommand(ctx context.Context, command string, args []string, in io.Rea
 		if err != nil {
 			return fail(err)
 		}
-		fmt.Fprintf(diagnostics, "airlock daemon: socket=%s wait=%s database=%s\n", strconv.Quote(*socket), wait, strconv.Quote(database))
-		if err := server.Serve(ctx); err != nil {
+		fmt.Fprintf(diagnostics, "airlock daemon: socket=%s wait=%s database=%s history-max-age=%s history-max-records=%d\n", strconv.Quote(*socket), wait, strconv.Quote(database), retention.MaxAge, retention.MaxRecords)
+		if err := serveWithRetention(ctx, server, queue, time.Hour); err != nil {
 			return fail(err)
 		}
 	case "submit":
@@ -123,6 +129,42 @@ func socketCommand(ctx context.Context, command string, args []string, in io.Rea
 		}
 	}
 	return 0
+}
+
+// Hourly maintenance enforces age limits even when the daemon is idle. Joining
+// the worker before closing SQLite keeps shutdown and lock ordering explicit.
+func serveWithRetention(ctx context.Context, server *transport.Server, queue *coordinator.Coordinator, interval time.Duration) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				done <- nil
+				return
+			case <-ticker.C:
+				if err := queue.PruneHistory(); err != nil {
+					if ctx.Err() != nil {
+						done <- nil
+						return
+					}
+					done <- err
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	err := server.Serve(ctx)
+	cancel()
+	maintenanceErr := <-done
+	if err != nil {
+		return err
+	}
+	return maintenanceErr
 }
 
 func doctor(ctx context.Context, args []string, out, diagnostics io.Writer) int {
