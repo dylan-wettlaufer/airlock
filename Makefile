@@ -14,7 +14,7 @@ vet:
 fmt:
 	$(GO) fmt ./...
 check: test race vet
-	@test -z "$$($(GO) fmt ./...)" || (echo 'Go formatting changed files; review and rerun make check'; exit 1)
+	@test -z "$$("$$($(GO) env GOROOT)/bin/gofmt" -l cmd internal)" || (echo 'Go files need formatting; run make fmt'; exit 1)
 demo: build
 	./bin/airlock demo
 clean:

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "./bin/airlock hook --agent cursor --wait 25s",
+        "timeout": 30,
+        "failClosed": true
+      }
+    ]
+  }
+}

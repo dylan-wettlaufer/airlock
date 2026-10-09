@@ -1,4 +1,4 @@
-// Package protocol defines source facts shared by adapters and the future daemon.
+// Package protocol defines source facts and the daemon's versioned wire protocol.
 package protocol
 
 const Version = 1

@@ -2,6 +2,8 @@
 
 Prepared October 8, 2026. This is a proposed design, informed by the supplied outline and current primary documentation. The integrations have not been exercised against the installed agents.
 
+Implementation update: Milestone 1's in-memory daemon and submit/list/decide flow is implemented with local process and race-detector coverage. The user authorized proceeding with partial Cursor spike evidence; approval-requiring commands and the live daemon smoke test remain open compatibility checks. The durable coordinator, TUI, and analyzer below remain future design. See [development status](docs/development.md) and [compatibility evidence](docs/compatibility.md).
+
 ## Recommendation
 
 Build Airlock. It is a strong junior SWE portfolio idea, especially for backend, infrastructure, platform, and developer tooling roles. Its value comes from coordinating real concurrent requests, handling failure correctly, and explaining design tradeoffs. A finished, reliable approval dashboard will demonstrate more than an unfinished dashboard plus rollback system.

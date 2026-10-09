@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"os/signal"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -40,7 +43,7 @@ func TestHookProcess(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, os.Args[0], append([]string{"-test.run=TestHelperProcess", "--", "hook", "--agent", "cursor"}, test.args...)...)
+			cmd := exec.CommandContext(ctx, os.Args[0], append([]string{"-test.run=TestHelperProcess", "--", "hook", "--agent", "cursor", "--socket", filepath.Join(t.TempDir(), "missing.sock")}, test.args...)...)
 			cmd.Env = append(os.Environ(), "AIRLOCK_TEST_HELPER=1")
 			cmd.Stdin = strings.NewReader(test.payload)
 			var stdout, stderr bytes.Buffer
@@ -68,7 +71,9 @@ func TestHelperProcess(t *testing.T) {
 	}
 	for i, arg := range os.Args {
 		if arg == "--" {
-			os.Exit(run(context.Background(), os.Args[i+1:], os.Stdin, os.Stdout, os.Stderr))
+			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer cancel()
+			os.Exit(run(ctx, os.Args[i+1:], os.Stdin, os.Stdout, os.Stderr))
 		}
 	}
 	os.Exit(1)

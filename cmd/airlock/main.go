@@ -10,11 +10,12 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"runtime"
 	"syscall"
 	"time"
 
 	"airlock/internal/adapters/cursor"
+	"airlock/internal/protocol"
+	"airlock/internal/transport"
 )
 
 const version = "0.0.0-dev"
@@ -40,13 +41,13 @@ func run(ctx context.Context, args []string, in io.Reader, out, diagnostics io.W
 	case "hook":
 		return hook(ctx, args[1:], in, out, diagnostics)
 	case "doctor":
-		fmt.Fprintf(out, "Airlock %s\nPlatform: %s/%s\nGo build: %s\nStage: Milestone 0 integration spike\n", version, runtime.GOOS, runtime.GOARCH, runtime.Version())
-		fmt.Fprintln(out, "Daemon, SQLite, and TUI: not implemented\nCursor compatibility: unverified; follow docs/compatibility.md")
-		return 0
+		return doctor(ctx, args[1:], out, diagnostics)
 	case "demo":
 		return demo(ctx, out, diagnostics)
-	case "daemon", "tui":
-		fmt.Fprintf(diagnostics, "%s is not implemented yet. Complete the Cursor compatibility gate in docs/compatibility.md first.\n", args[0])
+	case "daemon", "submit", "list", "decide":
+		return socketCommand(ctx, args[0], args[1:], in, out, diagnostics)
+	case "tui":
+		fmt.Fprintln(diagnostics, "tui is not implemented yet; use list and decide for manual review.")
 		return 1
 	default:
 		fmt.Fprintf(diagnostics, "unknown subcommand %q\n", args[0])
@@ -59,15 +60,20 @@ func usage(w io.Writer) {
 	fmt.Fprintln(w, `Airlock — local terminal approval inbox for coding agents
 
 Usage: airlock <subcommand>
-  hook --agent cursor          Return a native denial (daemon not built yet)
+  daemon [--socket PATH] [--wait 25s]  Run the foreground in-memory daemon
+  hook --agent cursor          Wait for a manual daemon decision
+       [--socket PATH] [--wait 25s]  Override socket or shorten the wait
+  submit [--socket PATH] [--wait 25s]  Submit a protocol request from stdin
+  list [--socket PATH] [--json]  List pending proposals
+  decide [--socket PATH] <request-id> allow|deny  Decide one proposal
   hook --agent cursor --spike  Run a controlled integration probe
        --decision allow|deny  Probe response (default deny)
        --delay 5s             Delay the probe response
        --failure nonzero|malformed|empty  Probe native failure handling
-  doctor                      Report build and implementation status
+  doctor [--socket PATH]       Report implementation status and daemon health
   demo                        Run a simulated no-account hook demo
   version                     Print development version
-  daemon / tui                Reserved for later milestones
+  tui                         Reserved for a later milestone
 
 Spike flags are for disposable compatibility tests only.
 See docs/compatibility.md before installing any hook configuration.`)
@@ -85,11 +91,25 @@ func hook(ctx context.Context, args []string, in io.Reader, out, diagnostics io.
 	decision := flags.String("decision", "deny", "probe permission")
 	delay := flags.Duration("delay", 0, "probe response delay")
 	failure := flags.String("failure", "", "probe failure mode")
+	socket := flags.String("socket", transport.DefaultSocket(), "private daemon socket")
+	wait := flags.Duration("wait", protocol.DefaultWait, "maximum manual decision wait")
 	if err := flags.Parse(args); err != nil {
 		return deny("invalid hook options")
 	}
 	if flags.NArg() != 0 || *agent != "cursor" {
 		return deny("unsupported hook invocation")
+	}
+	spikeOnly := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "decision" || f.Name == "delay" || f.Name == "failure" {
+			spikeOnly = true
+		}
+	})
+	if !*spike && spikeOnly {
+		return deny("probe options require --spike")
+	}
+	if *wait < time.Millisecond || *wait > protocol.MaxWait {
+		return deny("wait must be at least 1ms and at most 24h")
 	}
 	if *decision != "allow" && *decision != "deny" {
 		return deny("decision must be allow or deny")
@@ -105,12 +125,24 @@ func hook(ctx context.Context, args []string, in io.Reader, out, diagnostics io.
 		// Do not echo payload data or parser errors that might contain secrets.
 		return deny("invalid Cursor hook payload")
 	}
-	if !*spike {
-		return deny("Airlock daemon is not implemented; authorization denied")
-	}
 	proposal, err := input.Proposal()
 	if err != nil {
 		return deny("could not create request ID")
+	}
+	if !*spike {
+		result, err := (transport.Client{Socket: *socket}).Submit(ctx, proposal, *wait)
+		if err != nil {
+			if ctx.Err() != nil {
+				return deny("hook interrupted")
+			}
+			return deny("Airlock authorization failed: " + err.Error())
+		}
+		if ctx.Err() != nil {
+			return deny("hook interrupted")
+		}
+		// The transport validates both identity and terminal-state permission.
+		reason := "Airlock " + result.State
+		return writeResponse(out, diagnostics, cursor.Response{Permission: result.Permission, UserMessage: reason, AgentMessage: reason})
 	}
 	// Only metadata is logged. Never print the command, email, or transcript.
 	fmt.Fprintf(diagnostics, "airlock spike: request=%s delay=%s\n", proposal.RequestID, delay.String())

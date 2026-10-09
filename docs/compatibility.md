@@ -45,7 +45,21 @@ Immediate deny, immediate allow, non-zero exit, missing executable, malformed ou
 | Two simultaneous sessions | Use delayed probes in two conversations | PASS for both proposals completing (user report): both agents printed; overlapping waits and distinct native IDs not captured |
 | Native permissions | Repeat sandboxed and approval-requiring proposals | OBSERVED (user report): `printf` ran without a Cursor prompt both with Airlock allowance and with the hook disabled; approval-requiring coverage remains unverified |
 
-This pre-daemon spike has no socket. Socket disconnect detection belongs to the vertical slice; record native hook process behavior here.
+The spike path has no socket. Milestone 1 now detects submitter disconnects over the socket; its local process tests establish Airlock behavior only. Native Cursor cancellation and real overlapping daemon-hook waits still require live evidence.
+
+## Manual daemon smoke test
+
+Milestone 1 development proceeds with partial compatibility evidence at the user's request. The daemon defaults to a 25-second effective wait under the example's 30-second outer timeout; this is a conservative development setting, not a measured usable human review window. The following test is pending; automated process tests do not establish live Cursor gating.
+
+1. Build Airlock and copy `bin/airlock` and `examples/cursor-daemon/hooks.json` into the disposable project's `bin/` and `.cursor/hooks.json`, replacing the spike configuration. Record the exact version and permission/sandbox settings. Register only this shell hook.
+2. Start `airlock daemon` in a terminal and keep another terminal ready for `airlock list` / `airlock decide`. Verify `airlock doctor` reports a responding daemon. Use the same absolute `--socket` path in the daemon, CLI, and hook config if their temporary-directory environments differ.
+3. Ask two separate Cursor conversations to run distinct harmless printf markers. Before deciding, verify that `list` contains two distinct request IDs and native conversation IDs, and that neither marker printed.
+4. Decide one full ID with `allow` and the other with `deny` within their displayed deadlines. Confirm only the allowed conversation prints its marker. Record overlapping wait times and the exact native responses/messages. Sanitize any captured payloads.
+5. Submit another marker and leave it undecided: verify expiry denies it before the outer timeout. Cancel a waiting conversation and confirm its hook process exits and its queue entry disappears; a later decision must fail.
+6. Repeat a waiting marker while stopping the daemon, and with no daemon running. Both must deny. Record process behavior and any lingering socket after a forced crash; do not delete an active daemon's socket.
+7. Separately test a harmless command that independently triggers native approval with the hook disabled under the recorded settings, then repeat it with manual Airlock allowance. Record whether a native prompt still appears. The baseline printf runs did not cover approval-requiring commands.
+
+Airlock allowance is permission for a proposal. It does not prove execution, eliminate native prompts, or establish exactly-once execution. Leave the compatibility gate pending until the remaining timing, cancellation, and native-permission evidence is recorded.
 
 ## Evidence record
 

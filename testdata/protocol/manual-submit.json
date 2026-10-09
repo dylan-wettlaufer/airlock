@@ -1,0 +1,12 @@
+{
+  "protocol_version": 1,
+  "request_id": "simulated-manual",
+  "agent": "fixture",
+  "agent_version": "synthetic",
+  "conversation_id": "simulated-conversation",
+  "source_tool_call_id": null,
+  "event": "before_shell_execution",
+  "command": "printf 'airlock-test\\n'",
+  "cwd": "",
+  "workspace_roots": []
+}
