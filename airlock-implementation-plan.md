@@ -156,7 +156,7 @@ Keep the immutable proposal in memory for the lifetime of the request. Approve t
 
 | Failure | Expected behavior |
 | --- | --- |
-| Daemon unavailable | Hook returns native denial if possible; installed fail-closed configuration covers hook failure |
+| Daemon absent before connection | Hook steps aside with hook-level allow; Cursor's native permissions apply. Unsafe socket paths and failures after connecting still deny |
 | UI absent or closes | Pending requests remain queued until the deadline, then deny |
 | Hook connection disappears | Cancel pending authorization when detected; do not replay an old allow to a new invocation |
 | Daemon restarts | Mark old pending requests interrupted; hooks must reconnect with fresh invocations where appropriate |

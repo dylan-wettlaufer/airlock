@@ -31,4 +31,6 @@ Errors use a structured envelope:
 
 Other codes include `invalid_frame`, `frame_too_large`, `unsupported_version`, `invalid_message`, `invalid_request`, `duplicate_request`, `queue_full`, and `unavailable`. Clients validate response type, version, ID, and state/permission combinations. Hook diagnostics use locally defined messages rather than echoing remote diagnostic text.
 
+An absent daemon is a local connection error, not a wire result. The Cursor hook alone translates a missing socket or connection refusal before any request is sent into hook-level `allow`, deferring to Cursor's native permission rules. Standalone CLI clients still fail. A wire `unavailable` error from a connected daemon, malformed responses, disconnects after connection, and unsafe socket permissions do not trigger this fallback.
+
 Initial frame reads and each response write have two-second deadlines. Clients bound list/decide/health exchanges to two seconds and submit exchanges to their requested wait plus two seconds. The server caps active connections at 256 and pending proposals at 128. Excess connections are closed; excess proposals receive `queue_full`. No connection is trusted to execute commands.

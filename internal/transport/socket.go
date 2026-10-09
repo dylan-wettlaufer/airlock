@@ -20,6 +20,10 @@ import (
 const ioTimeout = 2 * time.Second
 const maxConnections = 256
 
+// ErrDaemonNotRunning means no daemon was reachable before exchanging any
+// request. It excludes unsafe paths and failures after a successful connection.
+var ErrDaemonNotRunning = errors.New("daemon is not running")
+
 func DefaultSocket() string {
 	return filepath.Join(os.TempDir(), fmt.Sprintf("airlock-%d", os.Getuid()), "airlock.sock")
 }
@@ -40,6 +44,9 @@ func privateDirectory(path string, create bool) error {
 		}
 	}
 	info, err := os.Lstat(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return ErrDaemonNotRunning
+	}
 	if err != nil || !info.IsDir() || !owned(info) || info.Mode().Perm() != 0700 {
 		return errors.New("socket directory must be owned by this user, mode 0700, and not a symlink")
 	}
@@ -51,6 +58,9 @@ func validateSocket(path string) error {
 		return err
 	}
 	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return ErrDaemonNotRunning
+	}
 	if err != nil || info.Mode()&os.ModeSocket == 0 || info.Mode().Perm() != 0600 || !owned(info) {
 		return errors.New("socket is unavailable or has unsafe ownership or permissions")
 	}

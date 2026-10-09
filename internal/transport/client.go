@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"net"
+	"os"
+	"syscall"
 	"time"
 
 	"airlock/internal/coordinator"
@@ -24,6 +26,9 @@ func (c Client) exchange(ctx context.Context, message protocol.Message, timeout 
 	defer cancel()
 	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", c.Socket)
 	if err != nil {
+		if ctx.Err() == nil && (errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, os.ErrNotExist)) {
+			return ErrDaemonNotRunning
+		}
 		return errors.New("daemon connection failed")
 	}
 	defer conn.Close()

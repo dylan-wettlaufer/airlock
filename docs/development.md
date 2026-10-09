@@ -7,7 +7,7 @@ Source of scope and design: [implementation plan](../airlock-implementation-plan
 - Go module, planned package boundaries, local toolchain bootstrap, Make targets, and CI checks.
 - Bounded Cursor payload decoder and immutable proposal translation with fresh invocation IDs.
 - Native JSON hook probe with allow/deny, delay, intentional failure modes, and cancellation denial.
-- Normal hook submission to the daemon, with native denial when authorization is unavailable.
+- Normal hook submission to the daemon, deferral to Cursor's native permissions when no daemon is running, and denial for connected-request failures.
 - Synthetic fixture, no-account demo, process tests, and a live compatibility checklist.
 - Milestone 1 foreground daemon, private Unix socket, bounded versioned NDJSON, and submit/list/decide CLI.
 - In-memory deadlines, disconnect cancellation, competing-decision protection, queue bounds, and health reporting.

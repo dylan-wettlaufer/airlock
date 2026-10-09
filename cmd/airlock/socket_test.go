@@ -190,6 +190,10 @@ func TestHookExpiryCancellationAndShutdownProcesses(t *testing.T) {
 			nativePermission(t, hook, "deny")
 			if mode == "expiry" || mode == "cancel" {
 				pendingCLI(t, path, 0)
+			} else {
+				// Only new invocations defer once the daemon is gone. The hook
+				// already connected above must never turn its lost decision into allow.
+				nativePermission(t, startCLI(t, nativePayload(t, "after-stop"), "hook", "--socket", path), "allow")
 			}
 		})
 	}
@@ -260,4 +264,67 @@ func TestHookDeniesInvalidDaemonResponse(t *testing.T) {
 	p := startCLI(t, nativePayload(t, "chat"), "hook", "--socket", path)
 	nativePermission(t, p, "deny")
 	<-done
+}
+
+func TestOfflineHookFallbackBoundaries(t *testing.T) {
+	for _, mode := range []string{"missing-directory", "missing-socket", "stale-socket", "unsafe-directory", "unsafe-socket", "regular-file", "socket-symlink"} {
+		t.Run(mode, func(t *testing.T) {
+			path := shortSocket(t)
+			want := "allow"
+			switch mode {
+			case "missing-directory":
+				path = filepath.Join(filepath.Dir(path), "absent", "airlock.sock")
+			case "stale-socket", "unsafe-socket", "socket-symlink":
+				listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				listener.SetUnlinkOnClose(false)
+				if err := os.Chmod(path, 0600); err != nil {
+					listener.Close()
+					t.Fatal(err)
+				}
+				if err := listener.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if mode == "unsafe-socket" {
+					if err := os.Chmod(path, 0666); err != nil {
+						t.Fatal(err)
+					}
+					want = "deny"
+				}
+				if mode == "socket-symlink" {
+					link := filepath.Join(filepath.Dir(path), "link.sock")
+					if err := os.Symlink(path, link); err != nil {
+						t.Fatal(err)
+					}
+					path, want = link, "deny"
+				}
+			case "unsafe-directory":
+				if err := os.Chmod(filepath.Dir(path), 0755); err != nil {
+					t.Fatal(err)
+				}
+				want = "deny"
+			case "regular-file":
+				if err := os.WriteFile(path, []byte("not a socket"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				want = "deny"
+			}
+			nativePermission(t, startCLI(t, nativePayload(t, "offline"), "hook", "--socket", path), want)
+		})
+	}
+}
+
+func TestCancelledHookDoesNotFallBack(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var stdout, stderr bytes.Buffer
+	if code := hook(ctx, []string{"--socket", shortSocket(t)}, strings.NewReader(nativePayload(t, "offline")), &stdout, &stderr); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	var response cursor.Response
+	if err := json.Unmarshal(stdout.Bytes(), &response); err != nil || response.Permission != "deny" {
+		t.Fatalf("cancelled hook fell back: %s %v", stdout.String(), err)
+	}
 }

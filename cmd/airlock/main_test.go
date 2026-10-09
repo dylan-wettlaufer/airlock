@@ -35,7 +35,9 @@ func TestHookProcess(t *testing.T) {
 		{"allow", []string{"--spike", "--decision", "allow"}, string(payload), "allow"},
 		{"captured empty cwd allow", []string{"--spike", "--decision", "allow"}, string(emptyCWD), "allow"},
 		{"captured empty cwd deny", []string{"--spike"}, string(emptyCWD), "deny"},
-		{"default closed", nil, string(payload), "deny"},
+		{"absent daemon defers to Cursor", nil, string(payload), "allow"},
+		{"absent daemon with unknown cwd", nil, string(emptyCWD), "allow"},
+		{"malformed input without daemon", nil, "{", "deny"},
 		{"allow requires spike", []string{"--decision", "allow"}, string(payload), "deny"},
 		{"malformed input", []string{"--spike", "--decision", "allow"}, "{", "deny"},
 		{"invalid options", []string{"--spike", "--decision", "yes"}, string(payload), "deny"},
@@ -43,7 +45,11 @@ func TestHookProcess(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, os.Args[0], append([]string{"-test.run=TestHelperProcess", "--", "hook", "--agent", "cursor", "--socket", filepath.Join(t.TempDir(), "missing.sock")}, test.args...)...)
+			dir := t.TempDir()
+			if err := os.Chmod(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.CommandContext(ctx, os.Args[0], append([]string{"-test.run=TestHelperProcess", "--", "hook", "--agent", "cursor", "--socket", filepath.Join(dir, "missing.sock")}, test.args...)...)
 			cmd.Env = append(os.Environ(), "AIRLOCK_TEST_HELPER=1")
 			cmd.Stdin = strings.NewReader(test.payload)
 			var stdout, stderr bytes.Buffer

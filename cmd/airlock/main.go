@@ -61,7 +61,7 @@ func usage(w io.Writer) {
 
 Usage: airlock <subcommand>
   daemon [--socket PATH] [--wait 25s]  Run the foreground in-memory daemon
-  hook --agent cursor          Wait for a manual daemon decision
+  hook --agent cursor          Wait for a daemon decision; defer to Cursor if stopped
        [--socket PATH] [--wait 25s]  Override socket or shorten the wait
   submit [--socket PATH] [--wait 25s]  Submit a protocol request from stdin
   list [--socket PATH] [--json]  List pending proposals
@@ -134,6 +134,12 @@ func hook(ctx context.Context, args []string, in io.Reader, out, diagnostics io.
 		if err != nil {
 			if ctx.Err() != nil {
 				return deny("hook interrupted")
+			}
+			if errors.Is(err, transport.ErrDaemonNotRunning) {
+				fmt.Fprintln(diagnostics, "airlock: daemon not running; deferring to Cursor's native permissions")
+				// This clears only Airlock's hook gate. It is not an Airlock approval
+				// and does not change Cursor's native permission configuration.
+				return writeResponse(out, diagnostics, cursor.Response{Permission: "allow"})
 			}
 			return deny("Airlock authorization failed: " + err.Error())
 		}
