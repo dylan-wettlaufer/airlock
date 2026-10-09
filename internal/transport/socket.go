@@ -77,6 +77,7 @@ type Server struct {
 	connections map[net.Conn]struct{}
 	wg          sync.WaitGroup
 	once        sync.Once
+	daemonLock  *DaemonLock
 }
 
 func Listen(path string, wait time.Duration) (*Server, error) {
@@ -85,6 +86,20 @@ func Listen(path string, wait time.Duration) (*Server, error) {
 
 // ListenWithCoordinator lets the daemon supply a durable audit recorder.
 func ListenWithCoordinator(path string, wait time.Duration, queue *coordinator.Coordinator) (*Server, error) {
+	lock, err := AcquireDaemon(path)
+	if err != nil {
+		return nil, err
+	}
+	server, err := lock.Listen(wait, queue)
+	if err != nil {
+		lock.Close()
+		return nil, err
+	}
+	server.daemonLock = lock
+	return server, nil
+}
+
+func listenSocket(path string, wait time.Duration, queue *coordinator.Coordinator) (*Server, error) {
 	if queue == nil {
 		return nil, errors.New("coordinator is required")
 	}
@@ -144,7 +159,15 @@ func (s *Server) Serve(ctx context.Context) error {
 		case <-done:
 		}
 	}()
-	defer func() { s.stop(); s.wg.Wait(); s.cleanup(); close(done) }()
+	defer func() {
+		s.stop()
+		s.wg.Wait()
+		s.cleanup()
+		if s.daemonLock != nil {
+			_ = s.daemonLock.Close()
+		}
+		close(done)
+	}()
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {

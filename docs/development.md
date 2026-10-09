@@ -16,6 +16,7 @@ Source of scope and design: [implementation plan](../airlock-implementation-plan
 - Persistent private SQLite history, versioned transactional migrations, agent/conversation sessions, decisions and lifecycle events, conservative command redaction, durable unique request IDs, and bounded `history` queries.
 - Atomic terminal audit writes before acknowledgment or hook allowance, one winner across competing transitions, explicit duplicate-decision rejection, single-writer process locking, and interruption of pending records on restart.
 - Immediate denial of every pending waiter after admission or terminal persistence failure; gated-commit tests and injected SQLite COMMIT failures validate visibility, rollback, and socket responses.
+- Exclusive socket ownership before database recovery, safe stale-socket replacement after successful recovery, startup failure cleanup, and process tests for crash/restart on the same endpoint, preserved completed history, and fresh hook decisions.
 
 ## Remaining gates
 

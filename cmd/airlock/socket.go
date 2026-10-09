@@ -56,6 +56,11 @@ func socketCommand(ctx context.Context, command string, args []string, in io.Rea
 				return fail(err)
 			}
 		}
+		daemonLock, err := transport.AcquireDaemon(*socket)
+		if err != nil {
+			return fail(err)
+		}
+		defer daemonLock.Close()
 		history, err := store.Open(database)
 		if err != nil {
 			return fail(err)
@@ -63,7 +68,7 @@ func socketCommand(ctx context.Context, command string, args []string, in io.Rea
 		defer history.Close()
 		queue := coordinator.NewWithHistory(history)
 		defer queue.Close()
-		server, err := transport.ListenWithCoordinator(*socket, wait, queue)
+		server, err := daemonLock.Listen(wait, queue)
 		if err != nil {
 			return fail(err)
 		}

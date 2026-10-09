@@ -75,25 +75,47 @@ func waitForHealth(t *testing.T, path string) {
 func TestHistoryCrashRecoveryProcess(t *testing.T) {
 	path, daemon := daemonCLI(t, "5s")
 	dbPath := filepath.Join(filepath.Dir(path), "history.sqlite3")
+	completed := startCLI(t, nativePayload(t, "completed-chat"), "hook", "--socket", path)
+	completedID := pendingCLI(t, path, 1)[0].Request.RequestID
+	finishCLI(t, startCLI(t, "", "decide", "--socket", path, completedID, "allow"))
+	nativePermission(t, completed, "allow")
 	hook := startCLI(t, nativePayload(t, "crash-chat"), "hook", "--socket", path)
-	items := pendingCLI(t, path, 1)
+	pendingID := pendingCLI(t, path, 1)[0].Request.RequestID
 	if err := daemon.cmd.Process.Kill(); err != nil {
 		t.Fatal(err)
 	}
 	<-daemon.done
 	nativePermission(t, hook, "deny")
-	before := finishCLI(t, startCLI(t, "", "history", "--database", dbPath, "--json"))
+	before := finishCLI(t, startCLI(t, "", "history", "--database", dbPath, "--json", "--request", pendingID))
 	var records []store.Record
 	if err := json.Unmarshal([]byte(before), &records); err != nil || len(records) != 1 || records[0].State != "pending" {
 		t.Fatalf("reader changed crash state: %s %v", before, err)
 	}
-	nextPath := shortSocket(t)
-	next := startCLI(t, "", "daemon", "--socket", nextPath, "--database", dbPath)
-	waitForHealth(t, nextPath)
-	after := finishCLI(t, startCLI(t, "", "history", "--database", dbPath, "--json", "--request", items[0].Request.RequestID))
+	// Restart on the exact stale socket, without manual removal.
+	next := startCLI(t, "", "daemon", "--socket", path, "--database", dbPath)
+	waitForHealth(t, path)
+	pendingCLI(t, path, 0)
+	after := finishCLI(t, startCLI(t, "", "history", "--database", dbPath, "--json", "--request", pendingID))
 	if err := json.Unmarshal([]byte(after), &records); err != nil || len(records) != 1 || records[0].State != "interrupted" || len(records[0].Events) != 2 {
 		t.Fatalf("recovery history: %s %v", after, err)
 	}
+	preserved := finishCLI(t, startCLI(t, "", "history", "--database", dbPath, "--json", "--request", completedID))
+	if err := json.Unmarshal([]byte(preserved), &records); err != nil || len(records) != 1 || records[0].State != "allowed" || len(records[0].Events) != 2 || records[0].Decision == nil {
+		t.Fatalf("completed history changed: %s %v", preserved, err)
+	}
+	// Identical source conversation/command still produces a fresh waiting hook.
+	fresh := startCLI(t, nativePayload(t, "completed-chat"), "hook", "--socket", path)
+	freshID := pendingCLI(t, path, 1)[0].Request.RequestID
+	if freshID == completedID {
+		t.Fatal("hook reused old request identity")
+	}
+	select {
+	case <-fresh.done:
+		t.Fatal("old allowance replayed to fresh hook")
+	default:
+	}
+	finishCLI(t, startCLI(t, "", "decide", "--socket", path, freshID, "deny"))
+	nativePermission(t, fresh, "deny")
 	if err := next.cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		t.Fatal(err)
 	}
