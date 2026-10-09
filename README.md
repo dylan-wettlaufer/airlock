@@ -2,7 +2,7 @@
 
 A local terminal approval inbox for coding agents, with explainable command warnings and an audit trail.
 
-**Current status: Milestone 1 in-memory daemon and manual decisions.** Hooks wait for individual decisions through `list` and `decide`. Local process tests prove two concurrent hooks receive their own results. SQLite history, the analyzer, and terminal UI are not implemented. Cursor compatibility is partially validated by user report; approval-requiring commands and the live daemon flow remain unverified. See the [compatibility record](docs/compatibility.md) and [implementation plan](airlock-implementation-plan.md).
+**Current status: manual decisions with persistent SQLite history.** Hooks wait for individual decisions through `list` and `decide`. Local process tests prove two concurrent hooks receive their own results. Live concurrent review, expiry, offline fallback, and a native Cursor prompt after Airlock allowance are now user-reported. Cursor can require its own approval after Airlock approval. SQLite history is implemented; the analyzer and terminal UI remain planned. The full compatibility gate remains partial pending configuration details and remaining failure observations. See the [compatibility record](docs/compatibility.md) and [implementation plan](airlock-implementation-plan.md).
 
 ## Development setup
 
@@ -18,7 +18,7 @@ make demo        # simulated allow/deny; never executes fixture commands
 
 If you already have Go 1.27 or later, skip `make setup`; `scripts/go` uses the local toolchain when present, otherwise the Go executable on PATH. Build and module caches stay in the ignored `.cache/` directory. No system-wide Go installation or agent configuration is changed.
 
-The module is named `airlock` until a remote repository is chosen. The daemon uses only the standard library, so there is no `go.sum`. Add and pin SQLite, Bubble Tea, and `mvdan.cc/sh/v3` when their milestones need them. Socket tests need permission to bind local Unix sockets; a restrictive execution sandbox may require running `make check` outside it.
+The module is named `airlock` until a remote repository is chosen. The SQLite store uses the pinned, pure Go `modernc.org/sqlite` driver with dependencies recorded in `go.mod` and `go.sum`. Bubble Tea and `mvdan.cc/sh/v3` remain planned. Socket tests need permission to bind local Unix sockets; a restrictive execution sandbox may require running `make check` outside it.
 
 ## Manual decision flow
 
@@ -42,13 +42,32 @@ The default socket is `airlock-<uid>/airlock.sock` under the OS temporary direct
 
 The daemon and submit/hook `--wait` flags default to 25 seconds. The effective deadline is the shorter of the daemon ceiling and the submitter's requested wait. Requests expire to denial without a decision. Clients allow up to two further seconds for transport; the daemon example keeps Cursor's outer timeout at 30 seconds. Longer waits require changing both Airlock settings and Cursor's timeout and validating that configuration live.
 
-The queue holds at most 128 pending requests and disappears on daemon exit. Detected submitter disconnects cancel requests; graceful shutdown returns denial where possible. There is no persistence or result replay. A stale decision fails, and every new invocation needs a fresh ID. A crashed daemon can leave a socket behind; startup refuses to replace any existing path. Confirm the old process has stopped before removing its stale socket manually.
+The queue holds at most 128 pending requests. Detected submitter disconnects cancel requests; graceful shutdown returns denial where possible. Requests and terminal states are recorded in SQLite before they become visible or return to the hook. On restart, unfinished records become interrupted denials; they are never restored to the approval queue. There is no result replay. A stale decision fails, and every invocation needs an ID that has never appeared in that database. A crashed daemon can leave a socket behind; startup refuses to replace any existing path. Confirm the old process has stopped before removing its stale socket manually.
 
 When no daemon is running at the configured socket, the Cursor hook immediately steps aside with a hook-level `permission: "allow"`; Cursor's native permission settings determine whether to prompt or execute. This applies to a missing socket or a private, correctly permissioned stale socket with no listener. It is not a recorded Airlock approval. A connected request still denies on timeout, cancellation, daemon shutdown/crash, or invalid responses. Unsafe socket paths and invalid hook input/options also deny. The standalone `submit`, `list`, and `decide` commands still report an error if the daemon is absent. Keep `failClosed: true` for hook execution failures. Native approval preservation must be tested on your installed Cursor configuration with a command that prompts when the hook is disabled.
 
 `list --json` returns the pending snapshot as an array. Text output escapes control characters and labels an empty working directory as unknown. `decide` and `submit` return JSON terminal results; a denied or expired submission is a successfully delivered result with exit status 0, while transport/protocol failures exit nonzero. Put flags before positional decision arguments. See the [wire protocol](docs/daemon-protocol.md).
 
 For a disposable Cursor project, copy the built binary and [daemon hook example](examples/cursor-daemon/hooks.json) into that project, then follow the [live smoke test](docs/compatibility.md#manual-daemon-smoke-test). This repository does not install hook configuration automatically.
+
+## Persistent history
+
+```sh
+./bin/airlock history --limit 20
+./bin/airlock history --state denied --json
+./bin/airlock history --agent cursor --conversation CHAT_ID
+./bin/airlock history --request REQUEST_ID --json
+```
+
+The default database is `$XDG_STATE_HOME/airlock/history.sqlite3`, or `$HOME/.local/state/airlock/history.sqlite3` when `XDG_STATE_HOME` is unset. It lives separately from the temporary socket directory and remains after socket cleanup. To override it, pass the same absolute `--database PATH` to `daemon` and `history`; hook clients need only the socket path. `doctor` reports the default history path.
+
+History works while the daemon is running or stopped. It opens an existing database read-only, without creating files or recovering pending records. Startup applies checked-in, transactional migrations using SQLite's `user_version`; a newer schema is rejected. A process lock permits one daemon per database, including when sockets differ. State directories must be owned by you with mode `0700`, and database, lock, and SQLite sidecar files use `0600`. Unsafe existing modes and symlinks in the immediate directory or database files are rejected.
+
+Records include agent/conversation sessions, native request metadata, workspace roots and working directory, receipt/deadline/terminal timestamps, manual decisions with source and reason, and request lifecycle events. Execution remains `unobserved`: an authorization record does not prove that the hook received it or the command ran. Storage failures deny authorization and block new requests until the daemon is restarted after the storage issue is resolved.
+
+Exact commands stay in memory for pending review. History retains only the executable basename followed by `[arguments redacted]`; assignment-leading commands and complex first tokens become `[command redacted]`. This conservative display removes all arguments and subsequent shell syntax. Redaction is best effort: executable names, native IDs, and path metadata can still be sensitive. No terminal output or transcripts are collected. The pending `list` command continues to show exact commands for review.
+
+Queries return newest requests first, with a request-ID tie break. The default limit is 50, the maximum is 200, and offsets are bounded to 0–10000. Filters match exact request ID, agent, conversation, or state. JSON includes decision and event details; text escapes terminal control characters. Query limits bound each response; automatic retention is still planned before release.
 
 ## Hook probe
 
@@ -65,13 +84,13 @@ For a disposable Cursor project, copy the built binary and [daemon hook example]
 ## Project layout
 
 ```text
-cmd/airlock/                 daemon, hook, submit/list/decide, doctor, demo
+cmd/airlock/                 daemon, hook, submit/list/decide/history, doctor, demo
 internal/protocol/          source-fact requests and bounded NDJSON envelopes
 internal/adapters/cursor/   bounded native JSON input and translation
-internal/coordinator/      in-memory decisions, deadlines, cancellation
+internal/coordinator/      decisions, durable transitions, deadlines, cancellation
 internal/transport/        private Unix-socket server and clients
 internal/analysis/         reserved for shell syntax warnings
-internal/store/            reserved for SQLite persistence
+internal/store/            SQLite history, embedded migrations, redacted display
 internal/tui/              reserved for terminal approval UI
 testdata/cursor/            synthetic, sanitized native payload
 testdata/protocol/          synthetic manual submission
@@ -83,4 +102,4 @@ docs/                      compatibility gate and milestone tracking
 
 The current flow is hook → private Unix socket → daemon ↔ CLI review. The terminal UI comes later. Authorization is separate from observed execution; no execution observation, rollback, or filesystem preview is provided.
 
-Next: validate the manual flow with two real Cursor conversations and complete the remaining compatibility evidence, then build durable coordination in Milestone 2. See [development milestones](docs/development.md).
+Next: complete the remaining compatibility evidence and Milestone 2 retention work. See [development milestones](docs/development.md).

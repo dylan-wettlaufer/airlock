@@ -1,7 +1,8 @@
-// Package coordinator serializes in-memory manual decisions and cancellation.
+// Package coordinator serializes manual decisions and cancellation with optional durable history.
 package coordinator
 
 import (
+	"errors"
 	"sort"
 	"sync"
 	"time"
@@ -21,7 +22,21 @@ type Coordinator struct {
 	mu      sync.Mutex
 	pending map[string]*entry
 	closed  bool
+	history Recorder
+	failed  bool
 	now     func() time.Time
+}
+
+// Recorder commits audit records before a proposal or terminal result is visible.
+type Recorder interface {
+	RecordPending(protocol.Pending) error
+	RecordResult(protocol.Result, time.Time) error
+}
+
+func NewWithHistory(history Recorder) *Coordinator {
+	c := New()
+	c.history = history
+	return c
 }
 
 func New() *Coordinator { return &Coordinator{pending: make(map[string]*entry), now: time.Now} }
@@ -36,6 +51,9 @@ func (c *Coordinator) Submit(r protocol.Request, wait time.Duration) (<-chan pro
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.failed {
+		return nil, protocol.Error("history_unavailable", "history persistence failed; restart the daemon after resolving the storage error")
+	}
 	if c.closed {
 		return nil, protocol.Error("unavailable", "daemon is shutting down")
 	}
@@ -52,8 +70,18 @@ func (c *Coordinator) Submit(r protocol.Request, wait time.Duration) (<-chan pro
 	}
 	now := c.now()
 	e := &entry{pending: protocol.Pending{Request: r, ReceivedAt: now, Deadline: now.Add(wait)}, result: make(chan protocol.Result, 1)}
+	if c.history != nil {
+		if err := c.history.RecordPending(e.pending); err != nil {
+			var wire *protocol.WireError
+			if errors.As(err, &wire) && wire.Code == "duplicate_request" {
+				return nil, err
+			}
+			c.failed = true
+			return nil, protocol.Error("history_unavailable", "could not persist request history")
+		}
+	}
 	c.pending[r.RequestID] = e
-	e.timer = time.AfterFunc(wait, func() {
+	e.timer = time.AfterFunc(max(e.pending.Deadline.Sub(c.now()), 0), func() {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		if c.pending[r.RequestID] == e {
@@ -64,7 +92,7 @@ func (c *Coordinator) Submit(r protocol.Request, wait time.Duration) (<-chan pro
 }
 
 // finish is called only with the mutex held; the buffered result never blocks.
-func (c *Coordinator) finish(e *entry, state, reason string) protocol.Result {
+func (c *Coordinator) finish(e *entry, state, reason string) (protocol.Result, error) {
 	delete(c.pending, e.pending.Request.RequestID)
 	if e.timer != nil {
 		e.timer.Stop()
@@ -74,8 +102,16 @@ func (c *Coordinator) finish(e *entry, state, reason string) protocol.Result {
 		permission = "allow"
 	}
 	r := protocol.Result{RequestID: e.pending.Request.RequestID, State: state, Permission: permission, Reason: reason}
+	var err error
+	if c.history != nil {
+		if c.history.RecordResult(r, c.now()) != nil {
+			c.failed = true
+			err = protocol.Error("history_unavailable", "could not persist terminal history; authorization denied")
+			r.State, r.Permission, r.Reason = "interrupted", "deny", "history persistence failed"
+		}
+	}
 	e.result <- r
-	return r
+	return r, err
 }
 
 func (c *Coordinator) Decide(id, permission string) (protocol.Result, error) {
@@ -88,6 +124,9 @@ func (c *Coordinator) Decide(id, permission string) (protocol.Result, error) {
 	if e == nil {
 		return protocol.Result{}, protocol.Error("not_pending", "request is unknown or no longer pending")
 	}
+	if c.failed {
+		return c.finish(e, "interrupted", "history persistence failed")
+	}
 	if !c.now().Before(e.pending.Deadline) {
 		c.finish(e, "expired", "decision deadline expired")
 		return protocol.Result{}, protocol.Error("not_pending", "request deadline expired")
@@ -96,7 +135,7 @@ func (c *Coordinator) Decide(id, permission string) (protocol.Result, error) {
 	if permission == "allow" {
 		state = "allowed"
 	}
-	return c.finish(e, state, "manual decision"), nil
+	return c.finish(e, state, "manual decision")
 }
 
 // Cancel uses the original result channel as a generation token, so late

@@ -1,2 +1,2 @@
-// Package store will persist redacted requests and durable decisions using SQLite migrations.
+// Package store persists redacted requests and durable decisions using SQLite migrations.
 package store

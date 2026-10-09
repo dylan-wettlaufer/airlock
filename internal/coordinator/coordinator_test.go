@@ -195,3 +195,34 @@ func TestInvalidProposalAndDecision(t *testing.T) {
 	_, err = c.Decide("one", "yes")
 	requireCode(t, err, "invalid_decision")
 }
+
+type failingRecorder struct{ pendingErr, resultErr error }
+
+func (f *failingRecorder) RecordPending(protocol.Pending) error          { return f.pendingErr }
+func (f *failingRecorder) RecordResult(protocol.Result, time.Time) error { return f.resultErr }
+
+func TestHistoryFailureNeverAllows(t *testing.T) {
+	recorder := &failingRecorder{pendingErr: errors.New("synthetic storage failure")}
+	c := NewWithHistory(recorder)
+	_, err := c.Submit(proposal("one"), time.Hour)
+	requireCode(t, err, "history_unavailable")
+	if len(c.List()) != 0 {
+		t.Fatal("unpersisted request visible")
+	}
+	c.Close()
+	recorder = &failingRecorder{}
+	c = NewWithHistory(recorder)
+	defer c.Close()
+	result, err := c.Submit(proposal("one"), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder.resultErr = errors.New("synthetic commit failure")
+	_, err = c.Decide("one", "allow")
+	requireCode(t, err, "history_unavailable")
+	if r := <-result; r.Permission != "deny" || r.State != "interrupted" {
+		t.Fatalf("unpersisted approval: %+v", r)
+	}
+	_, err = c.Submit(proposal("two"), time.Hour)
+	requireCode(t, err, "history_unavailable")
+}

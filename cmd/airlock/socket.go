@@ -10,7 +10,9 @@ import (
 	"strconv"
 	"time"
 
+	"airlock/internal/coordinator"
 	"airlock/internal/protocol"
+	"airlock/internal/store"
 	"airlock/internal/transport"
 )
 
@@ -20,6 +22,10 @@ func socketCommand(ctx context.Context, command string, args []string, in io.Rea
 	socket := flags.String("socket", transport.DefaultSocket(), "private Unix socket path")
 	wait := protocol.DefaultWait
 	jsonOutput := false
+	database := ""
+	if command == "daemon" {
+		flags.StringVar(&database, "database", "", "persistent history database path")
+	}
 	if command == "daemon" || command == "submit" {
 		flags.DurationVar(&wait, "wait", protocol.DefaultWait, "maximum wait (1ms through 24h)")
 	}
@@ -43,11 +49,25 @@ func socketCommand(ctx context.Context, command string, args []string, in io.Rea
 	client := transport.Client{Socket: *socket}
 	switch command {
 	case "daemon":
-		server, err := transport.Listen(*socket, wait)
+		if database == "" {
+			var err error
+			database, err = store.DefaultPath()
+			if err != nil {
+				return fail(err)
+			}
+		}
+		history, err := store.Open(database)
 		if err != nil {
 			return fail(err)
 		}
-		fmt.Fprintf(diagnostics, "airlock daemon: socket=%s wait=%s (in memory; no durable history)\n", strconv.Quote(*socket), wait)
+		defer history.Close()
+		queue := coordinator.NewWithHistory(history)
+		defer queue.Close()
+		server, err := transport.ListenWithCoordinator(*socket, wait, queue)
+		if err != nil {
+			return fail(err)
+		}
+		fmt.Fprintf(diagnostics, "airlock daemon: socket=%s wait=%s database=%s\n", strconv.Quote(*socket), wait, strconv.Quote(database))
 		if err := server.Serve(ctx); err != nil {
 			return fail(err)
 		}
@@ -111,13 +131,16 @@ func doctor(ctx context.Context, args []string, out, diagnostics io.Writer) int 
 		fmt.Fprintln(diagnostics, "airlock: unexpected doctor arguments")
 		return 1
 	}
-	fmt.Fprintf(out, "Airlock %s\nPlatform: %s/%s\nGo build: %s\nStage: Milestone 1 in-memory daemon and manual decisions\n", version, runtime.GOOS, runtime.GOARCH, runtime.Version())
+	fmt.Fprintf(out, "Airlock %s\nPlatform: %s/%s\nGo build: %s\nStage: manual decisions with persistent SQLite history\n", version, runtime.GOOS, runtime.GOARCH, runtime.Version())
 	fmt.Fprintf(out, "Socket: %s\n", strconv.Quote(*socket))
 	if err := (transport.Client{Socket: *socket}).Health(ctx); err != nil {
 		fmt.Fprintln(out, "Daemon: unavailable or unsafe")
 	} else {
 		fmt.Fprintln(out, "Daemon: responding")
 	}
-	fmt.Fprintln(out, "SQLite and TUI: not implemented\nCursor compatibility: partially validated; approval-requiring commands unverified; see docs/compatibility.md")
+	if path, err := store.DefaultPath(); err == nil {
+		fmt.Fprintf(out, "Default history database: %s\n", strconv.Quote(path))
+	}
+	fmt.Fprintln(out, "SQLite history: implemented; TUI: not implemented\nCursor compatibility: partially validated; see docs/compatibility.md")
 	return 0
 }

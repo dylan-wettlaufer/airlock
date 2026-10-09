@@ -13,11 +13,14 @@ Source of scope and design: [implementation plan](../airlock-implementation-plan
 - In-memory deadlines, disconnect cancellation, competing-decision protection, queue bounds, and health reporting.
 - Two concurrent hook processes with independently routed allow/deny, plus process-level expiry, cancellation, shutdown, and crash denial tests.
 
+- Persistent private SQLite history, versioned transactional migrations, agent/conversation sessions, decisions and lifecycle events, conservative command redaction, durable unique request IDs, and bounded `history` queries.
+- Atomic terminal audit writes before acknowledgment, failure denial, single-writer process locking, and interruption of pending records on restart.
+
 ## Remaining gates
 
 0. **Integration spike:** run and document the live Cursor matrix. Setup alone does not complete this milestone.
-1. **Vertical slice: implemented and locally verified.** Foreground daemon; versioned bounded NDJSON over a private Unix socket; submit/list/decide CLI; two concurrent waiting hooks with correctly routed results. The live Cursor daemon smoke test remains pending.
-2. **Reliable coordinator:** conditional durable decisions, SQLite migrations, deadlines, cancellation, conflicting/duplicate IDs, interrupted requests after restart, permissions, daemon lock, backpressure, retention and redaction.
+1. **Vertical slice: implemented and locally verified, with live user-reported coverage.** Foreground daemon; versioned bounded NDJSON over a private Unix socket; submit/list/decide CLI; two concurrent waiting hooks with correctly routed results. The October 9 report covers concurrent live review, expiry, offline fallback, denial of pending commands on shutdown, and a native approval prompt after Airlock allowance. The full compatibility gate still needs configuration details, session cancellation process-exit confirmation, and measured timing.
+2. **Reliable coordinator: SQLite history implemented and locally tested.** Durable transitions, migrations, deadlines, cancellation, unique IDs across restarts, recovery, private files, single-writer locking, and redaction are implemented. Retention, expanded stress measurements, and live restart validation remain.
 3. **TUI:** pin compatible Bubble Tea packages; queue/details/countdowns, stable selection, decisions, snapshot/subscription sequencing and reconnect.
 4. **Analysis:** pin the shell syntax parser; walk full ASTs, implement warning families, label candidate paths and unresolved effects, bound resources, never evaluate input.
 5. **Release:** real compatibility smoke tests, installation/doctor, fixture queue demo and history, CI, measured stress experiment, and tagged binaries.
@@ -28,4 +31,4 @@ Do not add placeholders that silently allow commands or imply execution success.
 
 `make check` runs unit/process tests, `go test -race ./...`, `go vet ./...`, and formatting verification. `make build` produces the single CLI executable. `make demo` runs a labeled simulation without a live agent account. GitHub Actions repeats checks, build, and demo on macOS.
 
-The socket milestone includes tests for concurrent routing, dropped hooks, malformed/oversized frames, deadline races, and competing decisions. `make check` verifies formatting without rewriting source files. The compatibility gate must be backed by real-agent evidence before support is claimed. Development proceeded to Milestone 1 with the user's explicit acceptance of partial compatibility evidence; approval-requiring commands remain an open check.
+The socket milestone includes tests for concurrent routing, dropped hooks, malformed/oversized frames, deadline races, and competing decisions. `make check` verifies formatting without rewriting source files. The compatibility gate must be backed by real-agent evidence before support is claimed. Development proceeded to Milestone 1 with the user's explicit acceptance of partial compatibility evidence; native approval after Airlock allowance is now observed by user report for the tested proposal, with broader coverage and exact configuration still open.

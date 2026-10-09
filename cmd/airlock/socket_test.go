@@ -67,7 +67,7 @@ func shortSocket(t *testing.T) string {
 func daemonCLI(t *testing.T, wait string) (string, *cliProcess) {
 	t.Helper()
 	path := shortSocket(t)
-	p := startCLI(t, "", "daemon", "--socket", path, "--wait", wait)
+	p := startCLI(t, "", "daemon", "--socket", path, "--wait", wait, "--database", filepath.Join(filepath.Dir(path), "history.sqlite3"))
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if err := (transport.Client{Socket: path}).Health(context.Background()); err == nil {

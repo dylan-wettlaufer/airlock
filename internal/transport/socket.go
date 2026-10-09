@@ -80,6 +80,14 @@ type Server struct {
 }
 
 func Listen(path string, wait time.Duration) (*Server, error) {
+	return ListenWithCoordinator(path, wait, coordinator.New())
+}
+
+// ListenWithCoordinator lets the daemon supply a durable audit recorder.
+func ListenWithCoordinator(path string, wait time.Duration, queue *coordinator.Coordinator) (*Server, error) {
+	if queue == nil {
+		return nil, errors.New("coordinator is required")
+	}
 	if wait <= 0 || wait > protocol.MaxWait {
 		return nil, errors.New("wait must be positive and at most 24h")
 	}
@@ -99,7 +107,7 @@ func Listen(path string, wait time.Duration) (*Server, error) {
 		l.Close()
 		return nil, errors.New("could not inspect socket")
 	}
-	s := &Server{listener: l, path: path, identity: identity, wait: wait, queue: coordinator.New(), connections: make(map[net.Conn]struct{})}
+	s := &Server{listener: l, path: path, identity: identity, wait: wait, queue: queue, connections: make(map[net.Conn]struct{})}
 	if err := os.Chmod(path, 0600); err != nil {
 		l.Close()
 		s.cleanup()

@@ -44,6 +44,8 @@ func run(ctx context.Context, args []string, in io.Reader, out, diagnostics io.W
 		return doctor(ctx, args[1:], out, diagnostics)
 	case "demo":
 		return demo(ctx, out, diagnostics)
+	case "history":
+		return historyCommand(ctx, args[1:], out, diagnostics)
 	case "daemon", "submit", "list", "decide":
 		return socketCommand(ctx, args[0], args[1:], in, out, diagnostics)
 	case "tui":
@@ -60,12 +62,15 @@ func usage(w io.Writer) {
 	fmt.Fprintln(w, `Airlock — local terminal approval inbox for coding agents
 
 Usage: airlock <subcommand>
-  daemon [--socket PATH] [--wait 25s]  Run the foreground in-memory daemon
+  daemon [--socket PATH] [--wait 25s] [--database PATH]  Run the foreground daemon
   hook --agent cursor          Wait for a daemon decision; defer to Cursor if stopped
        [--socket PATH] [--wait 25s]  Override socket or shorten the wait
   submit [--socket PATH] [--wait 25s]  Submit a protocol request from stdin
   list [--socket PATH] [--json]  List pending proposals
   decide [--socket PATH] <request-id> allow|deny  Decide one proposal
+  history [--database PATH] [--json] [--limit 50] [--offset 0]
+       [--request ID] [--agent NAME] [--conversation ID] [--state STATE]
+                              Query persistent, redacted authorization history
   hook --agent cursor --spike  Run a controlled integration probe
        --decision allow|deny  Probe response (default deny)
        --delay 5s             Delay the probe response
