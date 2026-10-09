@@ -1,0 +1,10 @@
+{
+  "conversation_id": "fixture-session-1",
+  "generation_id": "fixture-generation-1",
+  "hook_event_name": "beforeShellExecution",
+  "cursor_version": "fixture-unverified",
+  "workspace_roots": ["/tmp/airlock-disposable"],
+  "command": "printf 'airlock-test\\n'",
+  "cwd": "/tmp/airlock-disposable",
+  "sandbox": false
+}

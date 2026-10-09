@@ -1,0 +1,10 @@
+/bin/
+/.tools/
+/.cache/
+/.cursor/
+*.sock
+*.db
+*.db-shm
+*.db-wal
+coverage.out
+.DS_Store

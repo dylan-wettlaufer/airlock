@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+version=1.27.2
+if [ -x "$root/.tools/go/bin/go" ]; then
+  "$root/.tools/go/bin/go" version
+  exit 0
+fi
+case "$(uname -s)/$(uname -m)" in
+  Darwin/arm64) arch=arm64; checksum=76812b213b1b2302c978d28fa52fa92d541704b9e7d9d5db8002c50e4018c4c5 ;;
+  Darwin/x86_64) arch=amd64; checksum=587b59182488b23aa6e5fc25110405a3e0e5b38ed2f5b2f46ed13c32aee356fe ;;
+  *) echo 'Automatic setup supports macOS only. Install Go 1.27+ and use scripts/go.' >&2; exit 1 ;;
+esac
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT HUP INT TERM
+curl -fsSL "https://go.dev/dl/go${version}.darwin-${arch}.tar.gz" -o "$scratch/go.tar.gz"
+printf '%s  %s\n' "$checksum" "$scratch/go.tar.gz" | shasum -a 256 -c -
+mkdir -p "$root/.tools"
+tar -xzf "$scratch/go.tar.gz" -C "$root/.tools"
+"$root/.tools/go/bin/go" version

@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+if [ -x "$root/.tools/go/bin/go" ]; then
+  go_bin="$root/.tools/go/bin/go"
+elif command -v go >/dev/null 2>&1; then
+  go_bin=$(command -v go)
+else
+  echo 'Go is missing. Run make setup first.' >&2
+  exit 1
+fi
+export GOCACHE="${GOCACHE:-$root/.cache/go-build}"
+export GOMODCACHE="${GOMODCACHE:-$root/.cache/go-mod}"
+export GOTOOLCHAIN=local
+exec "$go_bin" "$@"
