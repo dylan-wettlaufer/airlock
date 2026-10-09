@@ -12,6 +12,7 @@ On macOS, with `make`, `curl`, and Xcode Command Line Tools available:
 make setup       # installs checksum-verified Go 1.27.2 into .tools/go
 make check       # unit/process tests, race detector, vet, formatting
 make build       # bin/airlock
+make stress      # isolated 100-request reliability experiment; never executes proposals
 make demo        # simulated allow/deny; never executes fixture commands
 ./bin/airlock doctor
 ```
@@ -114,4 +115,4 @@ docs/                      compatibility gate and milestone tracking
 
 The current flow is hook → private Unix socket → daemon ↔ CLI review. The terminal UI comes later. Authorization is separate from observed execution; no execution observation, rollback, or filesystem preview is provided.
 
-Next: complete the remaining compatibility evidence and Milestone 2 retention work. See [development milestones](docs/development.md).
+Retention and the isolated 100-request reliability experiment are complete; see [measured results](docs/reliability.md). Next: snapshot/subscription support for the terminal UI, then stable selection, countdowns, keyboard decisions and reconnect behavior. Live Cursor compatibility evidence remains a separate gate. See [development milestones](docs/development.md).

@@ -20,12 +20,15 @@ Source of scope and design: [implementation plan](../airlock-implementation-plan
 
 - Automatic completed-history retention by age and count, version-2 migration backfilling a permanent ID registry, pruning of dependent metadata, hourly idle maintenance, and transaction rollback/duplicate protection tests.
 
+- Fixed-seed, 100-request reliability harness with isolated sockets/SQLite, conflicting decisions, disconnects, expiry, real process crash/restart, audit agreement and permanent ID checks after count/age pruning. See [measured results and rerun command](reliability.md).
+- October 9 user-reported manual Airlock checks: redaction, duplicate-decision rejection, same-socket crash recovery, completed-history preservation, count/age pruning and rejection of pruned IDs. These observations do not complete native Cursor validation.
+
 ## Remaining gates
 
 0. **Integration spike:** run and document the live Cursor matrix. Setup alone does not complete this milestone.
 1. **Vertical slice: implemented and locally verified, with live user-reported coverage.** Foreground daemon; versioned bounded NDJSON over a private Unix socket; submit/list/decide CLI; two concurrent waiting hooks with correctly routed results. The October 9 report covers concurrent live review, expiry, offline fallback, denial of pending commands on shutdown, and a native approval prompt after Airlock allowance. The full compatibility gate still needs configuration details, session cancellation process-exit confirmation, and measured timing.
-2. **Reliable coordinator: SQLite history implemented and locally tested.** Durable transitions, migrations, deadlines, cancellation, unique IDs across restarts, recovery, private files, single-writer locking, and redaction are implemented. Age/count retention with permanent ID reservation is implemented. Expanded stress measurements and live restart validation remain.
-3. **TUI:** pin compatible Bubble Tea packages; queue/details/countdowns, stable selection, decisions, snapshot/subscription sequencing and reconnect.
+2. **Reliable coordinator: SQLite history implemented and locally tested.** Durable transitions, migrations, deadlines, cancellation, unique IDs across restarts, recovery, private files, single-writer locking, and redaction are implemented. Age/count retention with permanent ID reservation is implemented. The 100-request stress experiment and isolated process restart validation pass. Native Cursor crash/restart evidence remains separate.
+3. **TUI:** next implement snapshot/subscription support with sequencing; then pin compatible Bubble Tea packages and build queue/details, stable selection, countdowns, keyboard decisions and reconnect behavior.
 4. **Analysis:** pin the shell syntax parser; walk full ASTs, implement warning families, label candidate paths and unresolved effects, bound resources, never evaluate input.
 5. **Release:** real compatibility smoke tests, installation/doctor, fixture queue demo and history, CI, measured stress experiment, and tagged binaries.
 
@@ -33,6 +36,6 @@ Do not add placeholders that silently allow commands or imply execution success.
 
 ## Checks
 
-`make check` runs unit/process tests, `go test -race ./...`, `go vet ./...`, and formatting verification. `make build` produces the single CLI executable. `make demo` runs a labeled simulation without a live agent account. GitHub Actions repeats checks, build, and demo on macOS.
+`make check` runs unit/process tests, `go test -race ./...`, `go vet ./...`, and formatting verification. `make stress` reruns the isolated experiment without caching and prints measured JSON. `make build` produces the single CLI executable. `make demo` runs a labeled simulation without a live agent account. GitHub Actions repeats checks, build, and demo on macOS.
 
 The socket milestone includes tests for concurrent routing, dropped hooks, malformed/oversized frames, deadline races, and competing decisions. `make check` verifies formatting without rewriting source files. The compatibility gate must be backed by real-agent evidence before support is claimed. Development proceeded to Milestone 1 with the user's explicit acceptance of partial compatibility evidence; native approval after Airlock allowance is now observed by user report for the tested proposal, with broader coverage and exact configuration still open.

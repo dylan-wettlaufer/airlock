@@ -97,3 +97,24 @@ Gate result: PENDING / PASS / FAIL
 Save sanitized payloads in `testdata/cursor/`, identifying which are captured versus synthetic. Remove emails, transcript paths, secrets, and personal workspace names. The existing fixture is **synthetic** and does not establish outcome correlation.
 
 Pass only when denial consistently prevents execution, waiting is usable, and all failure behavior is understood for the tested configuration. If the gate fails, investigate another adapter or explicitly choose monitoring-only scope before expanding the daemon.
+
+## Remaining human-observed checklist
+
+Keep this gate separate from the [fixture reliability experiment](reliability.md).
+For each case, record the date, expected/actual command execution, native messages,
+process behavior and elapsed time in the evidence record above.
+
+- [ ] Record the exact installed Cursor version, OS/architecture, shell, permission
+  and sandbox settings, and complete hook JSON, including `failClosed` and timeout.
+- [ ] Cancel a pending native conversation: observe the hook PID exit, queue removal,
+  rejected later decisions and no command execution. Capture process-list evidence.
+- [ ] Measure expiry response time and the outer timeout in the same configuration;
+  record usable review time and the remaining transport/startup margin. The configured
+  25s/30s defaults alone do not establish a sufficient margin.
+- [ ] Force a daemon crash during a native pending request; observe denial and hook
+  exit with no execution. Restart on the same socket/database, confirm interrupted
+  history and rejected old IDs, then observe a fresh request receiving its own
+  decision. Record offline native-permission behavior between crash and restart.
+
+Fixture and CLI process tests cannot establish these native behaviors. Keep the
+full Cursor compatibility gate pending until human-observed evidence is recorded.
