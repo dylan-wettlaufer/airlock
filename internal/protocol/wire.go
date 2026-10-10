@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"airlock/internal/analysis"
 )
 
 const (
@@ -29,9 +31,10 @@ type Message struct {
 }
 
 type Pending struct {
-	Request    Request   `json:"request"`
-	ReceivedAt time.Time `json:"received_at"`
-	Deadline   time.Time `json:"deadline"`
+	Request    Request          `json:"request"`
+	ReceivedAt time.Time        `json:"received_at"`
+	Deadline   time.Time        `json:"deadline"`
+	Analysis   *analysis.Report `json:"analysis,omitempty"`
 }
 
 type Result struct {

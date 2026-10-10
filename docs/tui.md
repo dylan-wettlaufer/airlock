@@ -72,8 +72,10 @@ subscription does not cancel hook submissions on their separate connections.
 Command and metadata control characters, including ANSI and bidi controls, are
 escaped before rendering. Proposal strings are displayed, never executed. Individual
 fields are visibly limited to 64 KiB and workspace displays to 1,024 roots; limits
-are labeled. Shell analysis remains unimplemented, so the screen provides no
-command risk classification. Read the proposal before granting permission.
+are labeled. The queue shows daemon-generated severity and completeness; details
+show reasons, candidate target paths, and unknown or external effects. See
+[command analysis](analysis.md) for the warning catalog and limits. Low severity
+does not establish safety; read the proposal before granting permission.
 
 ## Local validation
 

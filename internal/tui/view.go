@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"airlock/internal/analysis"
+
 	tea "charm.land/bubbletea/v2"
 	lip "charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -75,7 +77,7 @@ func (m *model) queue(width, height int) string {
 		}
 		countdown := remaining(p.Deadline, m.now)
 		text := marker + short(quote(p.Request.Agent)+" / "+quote(p.Request.ConversationID), width-ansi.StringWidth(countdown)-4) + "  " + countdown
-		lines = append(lines, style.Render(short(text, width)), mutedStyle.Render(short("  "+p.Request.RequestID, width)))
+		lines = append(lines, style.Render(short(text, width)), mutedStyle.Render(short("  "+analysis.Label(p.Analysis)+" · "+p.Request.RequestID, width)))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -100,7 +102,7 @@ func (m *model) details(width, height int) string {
 	if len(roots) == 0 {
 		rootsDisplay = "not supplied"
 	}
-	text := fmt.Sprintf("Command: %s\n\nRequest: %s\nAgent: %s  Version: %s\nConversation: %s\nCWD: %s\nWorkspace: %s\nDeadline: %s (%s)\n\nAuthorization only · execution unobserved\nShell analysis is not implemented.", quote(p.Request.Command), p.Request.RequestID, quote(p.Request.Agent), quote(p.Request.AgentVersion), quote(p.Request.ConversationID), cwd, rootsDisplay, p.Deadline.Local().Format("15:04:05.000 MST"), remaining(p.Deadline, m.now))
+	text := fmt.Sprintf("Command: %s\n\n%s\n\nRequest: %s\nAgent: %s  Version: %s\nConversation: %s\nCWD: %s\nWorkspace: %s\nDeadline: %s (%s)\n\nAuthorization only · execution unobserved", quote(p.Request.Command), analysis.Details(p.Analysis), p.Request.RequestID, quote(p.Request.Agent), quote(p.Request.AgentVersion), quote(p.Request.ConversationID), cwd, rootsDisplay, p.Deadline.Local().Format("15:04:05.000 MST"), remaining(p.Deadline, m.now))
 	lines := strings.Split(ansi.Hardwrap(text, max(1, width), true), "\n")
 	// Keep the final page within reach after resizing or selecting a short item.
 	offset := min(m.detailOffset, max(0, len(lines)-height))

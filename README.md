@@ -114,7 +114,7 @@ internal/protocol/          source-fact requests and bounded NDJSON envelopes
 internal/adapters/cursor/   bounded native JSON input and translation
 internal/coordinator/      decisions, durable transitions, deadlines, cancellation
 internal/transport/        private Unix-socket server and clients
-internal/analysis/         reserved for shell syntax warnings
+internal/analysis/         bounded shell syntax warnings and candidate targets
 internal/store/            SQLite history, embedded migrations, redacted display
 internal/tui/              live queue, stable selection, countdowns, keyboard review
 testdata/cursor/            synthetic, sanitized native payload
@@ -127,4 +127,4 @@ docs/                      compatibility gate and milestone tracking
 
 The current flow is hook → private Unix socket → daemon ↔ terminal UI or CLI review. Authorization is separate from observed execution; no execution observation, rollback, or filesystem preview is provided.
 
-Retention and the isolated 100-request reliability experiment are complete; see [measured results](docs/reliability.md). The terminal screen and its snapshot/subscription support are implemented. Next: bounded shell-syntax analysis with explainable warnings and labeled candidate paths. Live Cursor compatibility evidence remains a separate gate. See [development milestones](docs/development.md).
+Retention and the isolated 100-request reliability experiment are complete; see [measured results](docs/reliability.md). The terminal screen, snapshot/subscription support, and initial [command analysis](docs/analysis.md) are implemented. The daemon supplies explainable severity findings, labeled candidate paths and explicit uncertainty to the CLI and TUI; analysis remains advisory and never executes commands. Live Cursor compatibility evidence remains a separate gate. See [development milestones](docs/development.md).

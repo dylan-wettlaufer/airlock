@@ -7,6 +7,7 @@ require (
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/charmbracelet/x/ansi v0.11.9
 	modernc.org/sqlite v1.60.1
+	mvdan.cc/sh/v3 v3.14.1
 )
 
 require (

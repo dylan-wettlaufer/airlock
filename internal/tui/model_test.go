@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"airlock/internal/analysis"
 	"context"
 	"errors"
 	"strings"
@@ -246,5 +247,24 @@ func TestLateDecisionErrorDoesNotInvalidateFreshSubscription(t *testing.T) {
 	m.Update(decisionMsg{generation: 1, id: "old", permission: "deny", err: errors.New("old connection lost")})
 	if !m.live() || m.selected != "fresh" || m.busy {
 		t.Fatal("late result invalidated new subscription")
+	}
+}
+
+func TestAnalysisSeverityAndTargetsAreRendered(t *testing.T) {
+	p := fixture("risk", time.Now())
+	p.Request.Command = `rm -rf "$TARGET"; printf x > ./result`
+	p.Request.CWD = "/project"
+	r := analysis.Analyze(p.Request.Command, p.Request.CWD)
+	p.Analysis = &r
+	m := ready(t, fakeClient{}, p)
+	m.Update(tea.WindowSizeMsg{Width: 160, Height: 60})
+	view := ansi.Strip(m.View().Content)
+	for _, want := range []string{"HIGH · incomplete", "Recursive deletion", "unresolved expression", "/project/result", "lexical only"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("missing %q in view: %s", want, view)
+		}
+	}
+	if !m.canDecide() {
+		t.Fatal("analysis replaced manual approval policy")
 	}
 }

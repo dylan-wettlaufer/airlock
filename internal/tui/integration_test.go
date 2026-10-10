@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"airlock/internal/analysis"
 	"airlock/internal/coordinator"
 	"airlock/internal/protocol"
 	"airlock/internal/store"
@@ -48,7 +49,9 @@ func TestProgramDecisionsRouteToRealSubmittersAndAudit(t *testing.T) {
 	submit := func(id string) <-chan submission {
 		done := make(chan submission, 1)
 		go func() {
-			r, err := client.Submit(context.Background(), fixture(id, time.Now()).Request, 10*time.Second)
+			request := fixture(id, time.Now()).Request
+			request.Command = `echo "$(rm -rf "$TARGET")" > ./result`
+			r, err := client.Submit(context.Background(), request, 10*time.Second)
 			done <- submission{r, err}
 		}()
 		return done
@@ -68,6 +71,16 @@ func TestProgramDecisionsRouteToRealSubmittersAndAudit(t *testing.T) {
 	waitQueue(1)
 	two := submit("two")
 	waitQueue(2)
+	// List and subscription snapshots must carry the daemon's findings intact.
+	items, err := client.List(context.Background())
+	if err != nil || len(items) != 2 {
+		t.Fatalf("list: %v", err)
+	}
+	for _, p := range items {
+		if p.Analysis == nil || p.Analysis.Severity != analysis.High || p.Analysis.Complete || len(p.Analysis.Findings) != 2 {
+			t.Fatalf("wire analysis: %+v", p.Analysis)
+		}
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	f := newFeed(ctx, client)
@@ -77,7 +90,12 @@ func TestProgramDecisionsRouteToRealSubmittersAndAudit(t *testing.T) {
 	acknowledged := make(chan struct{})
 	var once, ackOnce sync.Once
 	program := tea.NewProgram(newModel(ctx, f), tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithContext(ctx), tea.WithoutSignalHandler(), tea.WithoutRenderer(), tea.WithWindowSize(120, 32), tea.WithFilter(func(_ tea.Model, message tea.Msg) tea.Msg {
-		if _, ok := message.(snapshotMsg); ok {
+		if msg, ok := message.(snapshotMsg); ok {
+			for _, p := range msg.snapshot.Items {
+				if p.Analysis == nil || p.Analysis.Severity != analysis.High || p.Analysis.Complete {
+					t.Error("subscription lost analysis")
+				}
+			}
 			once.Do(func() { close(ready) })
 		}
 		if _, ok := message.(decisionMsg); ok {

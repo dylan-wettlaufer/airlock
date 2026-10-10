@@ -1,2 +1,2 @@
-// Package analysis will provide deterministic shell warnings without executing commands.
+// Package analysis provides bounded shell syntax warnings without executing commands.
 package analysis

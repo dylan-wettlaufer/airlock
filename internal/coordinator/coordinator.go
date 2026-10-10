@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"airlock/internal/analysis"
 	"airlock/internal/protocol"
 )
 
@@ -79,6 +80,9 @@ func (c *Coordinator) Submit(r protocol.Request, wait time.Duration) (<-chan pro
 	if wait <= 0 || wait > protocol.MaxWait {
 		return nil, protocol.Error("invalid_wait", "invalid wait duration")
 	}
+	// Analyze outside the coordinator lock so parsing cannot block decisions or
+	// expiry. Admission starts its effective deadline after analysis completes.
+	report := analysis.Analyze(r.Command, r.CWD)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.failed {
@@ -99,7 +103,7 @@ func (c *Coordinator) Submit(r protocol.Request, wait time.Duration) (<-chan pro
 		r.SourceToolCallID = &id
 	}
 	now := c.now()
-	e := &entry{pending: protocol.Pending{Request: r, ReceivedAt: now, Deadline: now.Add(wait)}, result: make(chan protocol.Result, 1)}
+	e := &entry{pending: protocol.Pending{Request: r, ReceivedAt: now, Deadline: now.Add(wait), Analysis: &report}, result: make(chan protocol.Result, 1)}
 	if c.history != nil {
 		if err := c.history.RecordPending(e.pending); err != nil {
 			var wire *protocol.WireError

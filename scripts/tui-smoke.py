@@ -76,7 +76,7 @@ def start_daemon():
         raise
 
 
-def submit(request_id):
+def submit(request_id, command="fixture-proposal sanitized-argument"):
     proposal = dict(
         protocol_version=1,
         request_id=request_id,
@@ -84,7 +84,7 @@ def submit(request_id):
         agent_version="pty-smoke",
         conversation_id="sanitized-" + request_id,
         event="before_shell_execution",
-        command="fixture-proposal sanitized-argument",
+        command=command,
         cwd="",
         workspace_roots=[],
     )
@@ -124,10 +124,14 @@ def history_states():
 
 try:
     daemon = start_daemon()
-    one = submit("smoke-one")
+    one = submit("smoke-one", 'fixture-proposal sanitized-argument; rm -rf "$TARGET"')
     until(lambda: len(operation("list")) == 2)
     two = submit("smoke-two")
     until(lambda: len(operation("list")) == 3)
+
+    analyzed = operation("list")[0]["pending"]["analysis"]
+    assert analyzed["severity"] == "high" and not analyzed["analysis_complete"]
+    assert analyzed["candidate_paths"][0]["expression"] == '"$TARGET"'
 
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 32, 120, 0, 0))
@@ -140,6 +144,8 @@ try:
         env=dict(os.environ, TERM="xterm-256color"),
     )
     read_until("fixture-proposal")
+    read_until("HIGH · incomplete")
+    read_until("Recursive deletion")
     os.write(master, b"a")
     read_until("ALLOW smoke-one")
     os.write(master, b"\r")

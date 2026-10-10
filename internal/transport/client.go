@@ -107,7 +107,7 @@ func (c Client) List(ctx context.Context) ([]protocol.Pending, error) {
 		if r.Type != "pending" || r.Pending == nil || r.Result != nil || len(items) >= coordinator.MaxPending {
 			return true, errors.New("invalid list response")
 		}
-		if err := r.Pending.Request.Validate(); err != nil {
+		if err := r.Pending.Validate(); err != nil {
 			return true, errors.New("invalid pending proposal")
 		}
 		items = append(items, *r.Pending)

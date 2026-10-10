@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"airlock/internal/analysis"
 	"airlock/internal/coordinator"
 	"airlock/internal/protocol"
 	"airlock/internal/store"
@@ -117,6 +118,7 @@ func socketCommand(ctx context.Context, command string, args []string, in io.Rea
 					cwd = strconv.Quote(p.Request.CWD)
 				}
 				fmt.Fprintf(out, "%s  agent=%s conversation=%s\n  command=%s\n  cwd=%s deadline=%s\n", p.Request.RequestID, strconv.Quote(p.Request.Agent), strconv.Quote(p.Request.ConversationID), strconv.Quote(p.Request.Command), cwd, p.Deadline.Format(time.RFC3339Nano))
+				fmt.Fprintln(out, analysis.Details(p.Analysis))
 			}
 		}
 	case "decide":

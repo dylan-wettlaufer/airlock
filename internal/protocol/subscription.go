@@ -53,11 +53,18 @@ func (p Pending) Validate() error {
 	if p.ReceivedAt.IsZero() || !p.Deadline.After(p.ReceivedAt) || p.Deadline.Sub(p.ReceivedAt) > MaxWait {
 		return errors.New("invalid pending timestamps")
 	}
+	if p.Analysis != nil {
+		return p.Analysis.Validate()
+	}
 	return nil
 }
 
 // Clone keeps snapshots and subscribers from mutating the coordinator or peers.
 func (p Pending) Clone() Pending {
+	if p.Analysis != nil {
+		report := p.Analysis.Clone()
+		p.Analysis = &report
+	}
 	p.Request.WorkspaceRoots = append([]string(nil), p.Request.WorkspaceRoots...)
 	if p.Request.SourceToolCallID != nil {
 		id := *p.Request.SourceToolCallID
