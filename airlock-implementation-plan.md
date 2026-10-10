@@ -2,7 +2,7 @@
 
 Prepared October 8, 2026. This is a proposed design, informed by the supplied outline and current primary documentation. The integrations have not been exercised against the installed agents.
 
-Implementation update: the daemon, submit/list/decide flow, durable SQLite history, retention, restart recovery, isolated 100-request reliability experiment and atomic snapshot/subscription support are implemented with local process and race-detector coverage. The terminal screen and analyzer remain future work. The user authorized proceeding with partial Cursor evidence; exact settings, process-exit cancellation, timeout margin and native crash/restart observations remain separate live compatibility gates. See [development status](docs/development.md), [reliability measurements](docs/reliability.md) and [compatibility evidence](docs/compatibility.md).
+Implementation update: the daemon, submit/list/decide flow, durable SQLite history, retention, restart recovery, isolated 100-request reliability experiment atomic snapshot/subscription support and the terminal approval screen are implemented with local process and race-detector coverage. The analyzer remains future work. The user authorized proceeding with partial Cursor evidence; exact settings, process-exit cancellation, timeout margin and native crash/restart observations remain separate live compatibility gates. See [development status](docs/development.md), [reliability measurements](docs/reliability.md) and [compatibility evidence](docs/compatibility.md).
 
 ## Recommendation
 

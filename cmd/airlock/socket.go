@@ -188,6 +188,6 @@ func doctor(ctx context.Context, args []string, out, diagnostics io.Writer) int 
 	if path, err := store.DefaultPath(); err == nil {
 		fmt.Fprintf(out, "Default history database: %s\n", strconv.Quote(path))
 	}
-	fmt.Fprintln(out, "SQLite history: implemented; TUI: not implemented\nCursor compatibility: partially validated; see docs/compatibility.md")
+	fmt.Fprintln(out, "SQLite history: implemented; TUI: implemented\nCursor compatibility: partially validated; see docs/compatibility.md")
 	return 0
 }

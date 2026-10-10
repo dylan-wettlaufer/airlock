@@ -25,12 +25,14 @@ Source of scope and design: [implementation plan](../airlock-implementation-plan
 
 - Atomic stamped queue snapshots and bounded subscriptions, with process-lifetime epochs, contiguous admission/terminal events, commit-before-event publication, disconnect cleanup and a validated transport client. Tests cover snapshot/decision races, mutable-field isolation, overflow without blocked decisions, subscriber limits, commit gates/failure, large snapshots, idle cancellation, invalid streams and fresh synchronization after reconnect/restart.
 
+- Working `airlock tui` with pinned Bubble Tea/Lip Gloss v2, responsive queue/details, stable ID selection, quarter-second countdowns, per-request keyboard confirmation, escaped proposal display, bounded UI handoff and reconnect backoff. Disconnected/expired controls are disabled; decisions recheck the connection lease, and uncertain acknowledgments are not retried. Model/race tests, real-socket keyboard/audit integration and an isolated PTY crash/restart/resize/restoration smoke test pass. See the [TUI guide](tui.md).
+
 ## Remaining gates
 
 0. **Integration spike:** run and document the live Cursor matrix. Setup alone does not complete this milestone.
 1. **Vertical slice: implemented and locally verified, with live user-reported coverage.** Foreground daemon; versioned bounded NDJSON over a private Unix socket; submit/list/decide CLI; two concurrent waiting hooks with correctly routed results. The October 9 report covers concurrent live review, expiry, offline fallback, denial of pending commands on shutdown, and a native approval prompt after Airlock allowance. The full compatibility gate still needs configuration details, session cancellation process-exit confirmation, and measured timing.
 2. **Reliable coordinator: SQLite history implemented and locally tested.** Durable transitions, migrations, deadlines, cancellation, unique IDs across restarts, recovery, private files, single-writer locking, and redaction are implemented. Age/count retention with permanent ID reservation is implemented. The 100-request stress experiment and isolated process restart validation pass. Native Cursor crash/restart evidence remains separate.
-3. **TUI:** snapshot/subscription support with sequencing is implemented. Next pin compatible Bubble Tea packages and build queue/details, stable selection, countdowns, keyboard decisions and reconnect behavior (invalidate cached state, disable decisions while disconnected, retry with backoff, replace state on a fresh snapshot).
+3. **TUI: implemented and locally verified.** Snapshot/subscription sequencing, queue/details, stable selection, countdowns, confirmed keyboard decisions and reconnect behavior pass local tests. Broader human terminal usability and live Cursor end-to-end validation remain release gates.
 4. **Analysis:** pin the shell syntax parser; walk full ASTs, implement warning families, label candidate paths and unresolved effects, bound resources, never evaluate input.
 5. **Release:** real compatibility smoke tests, installation/doctor, fixture queue demo and history, CI, measured stress experiment, and tagged binaries.
 
@@ -38,6 +40,6 @@ Do not add placeholders that silently allow commands or imply execution success.
 
 ## Checks
 
-`make check` runs unit/process tests, `go test -race ./...`, `go vet ./...`, and formatting verification. `make stress` reruns the isolated experiment without caching and prints measured JSON. `make build` produces the single CLI executable. `make demo` runs a labeled simulation without a live agent account. GitHub Actions repeats checks, build, and demo on macOS.
+`make check` runs unit/process tests, `go test -race ./...`, `go vet ./...`, and formatting verification. `make stress` reruns the isolated experiment without caching and prints measured JSON. `make build` produces the single CLI executable. `python3 scripts/tui-smoke.py` exercises the built screen in an isolated PTY with crash/restart and terminal restoration. `make demo` runs a labeled simulation without a live agent account. GitHub Actions repeats checks, build, and demo on macOS.
 
 The socket milestone includes tests for concurrent routing, dropped hooks, malformed/oversized frames, deadline races, and competing decisions. `make check` verifies formatting without rewriting source files. The compatibility gate must be backed by real-agent evidence before support is claimed. Development proceeded to Milestone 1 with the user's explicit acceptance of partial compatibility evidence; native approval after Airlock allowance is now observed by user report for the tested proposal, with broader coverage and exact configuration still open.

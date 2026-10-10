@@ -49,8 +49,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, diagnostics io.W
 	case "daemon", "submit", "list", "decide":
 		return socketCommand(ctx, args[0], args[1:], in, out, diagnostics)
 	case "tui":
-		fmt.Fprintln(diagnostics, "tui is not implemented yet; use list and decide for manual review.")
-		return 1
+		return tuiCommand(ctx, args[1:], in, out, diagnostics)
 	default:
 		fmt.Fprintf(diagnostics, "unknown subcommand %q\n", args[0])
 		usage(diagnostics)
@@ -80,7 +79,7 @@ Usage: airlock <subcommand>
   doctor [--socket PATH]       Report implementation status and daemon health
   demo                        Run a simulated no-account hook demo
   version                     Print development version
-  tui                         Reserved for a later milestone
+  tui [--socket PATH]          Review and decide proposals in the terminal
 
 Spike flags are for disposable compatibility tests only.
 See docs/compatibility.md before installing any hook configuration.`)

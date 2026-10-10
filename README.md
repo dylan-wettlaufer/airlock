@@ -2,7 +2,7 @@
 
 A local terminal approval inbox for coding agents, with explainable command warnings and an audit trail.
 
-**Current status: manual decisions with persistent SQLite history.** Hooks wait for individual decisions through `list` and `decide`. Consistent snapshots and sequenced live subscriptions are implemented for the upcoming terminal UI. Local process tests prove two concurrent hooks receive their own results. Live concurrent review, expiry, offline fallback, and a native Cursor prompt after Airlock allowance are now user-reported. Cursor can require its own approval after Airlock approval. SQLite history is implemented; the analyzer and terminal UI remain planned. The full compatibility gate remains partial pending configuration details and remaining failure observations. See the [compatibility record](docs/compatibility.md) and [implementation plan](airlock-implementation-plan.md).
+**Current status: terminal approval inbox with persistent SQLite history.** Review waiting hooks through `airlock tui`, or use `list` and `decide`. The UI has stable selection, deadline countdowns, keyboard confirmations and automatic reconnect. Local process tests prove two concurrent hooks receive their own results. Live concurrent review, expiry, offline fallback, and a native Cursor prompt after Airlock allowance are now user-reported. Cursor can require its own approval after Airlock approval. SQLite history and the terminal UI are implemented; the analyzer remains planned. The full compatibility gate remains partial pending configuration details and remaining failure observations. See the [compatibility record](docs/compatibility.md) and [implementation plan](airlock-implementation-plan.md).
 
 ## Development setup
 
@@ -19,7 +19,7 @@ make demo        # simulated allow/deny; never executes fixture commands
 
 If you already have Go 1.27 or later, skip `make setup`; `scripts/go` uses the local toolchain when present, otherwise the Go executable on PATH. Build and module caches stay in the ignored `.cache/` directory. No system-wide Go installation or agent configuration is changed.
 
-The module is named `airlock` until a remote repository is chosen. The SQLite store uses the pinned, pure Go `modernc.org/sqlite` driver with dependencies recorded in `go.mod` and `go.sum`. Bubble Tea and `mvdan.cc/sh/v3` remain planned. Socket tests need permission to bind local Unix sockets; a restrictive execution sandbox may require running `make check` outside it.
+The module is named `airlock` until a remote repository is chosen. The SQLite store uses the pinned, pure Go `modernc.org/sqlite` driver with dependencies recorded in `go.mod` and `go.sum`. The terminal UI pins Bubble Tea v2.1.0 and Lip Gloss v2.0.6. `mvdan.cc/sh/v3` remains planned. Socket tests need permission to bind local Unix sockets; a restrictive execution sandbox may require running `make check` outside it.
 
 ## Manual decision flow
 
@@ -50,6 +50,18 @@ When no daemon is running at the configured socket, the Cursor hook immediately 
 `list --json` returns the pending snapshot as an array. Text output escapes control characters and labels an empty working directory as unknown. `decide` and `submit` return JSON terminal results; a denied or expired submission is a successfully delivered result with exit status 0, while transport/protocol failures exit nonzero. Put flags before positional decision arguments. See the [wire protocol](docs/daemon-protocol.md).
 
 For a disposable Cursor project, copy the built binary and [daemon hook example](examples/cursor-daemon/hooks.json) into that project, then follow the [live smoke test](docs/compatibility.md#manual-daemon-smoke-test). This repository does not install hook configuration automatically.
+
+## Terminal UI
+
+```sh
+./bin/airlock tui
+./bin/airlock tui --socket /absolute/private/airlock.sock
+```
+
+Use arrows or j/k to select, a/d to choose allow/deny, Enter to confirm, Esc to
+cancel, PageUp/PageDown to scroll details, r to refresh, and q to quit. Decisions
+are disabled after expiry or while disconnected. See the [TUI guide](docs/tui.md)
+for reconnect behavior and an isolated terminal smoke test.
 
 ## Persistent history
 
@@ -97,14 +109,14 @@ Pruning deletes old actions, decisions, events, and sessions with no retained ac
 ## Project layout
 
 ```text
-cmd/airlock/                 daemon, hook, submit/list/decide/history, doctor, demo
+cmd/airlock/                 daemon, hook, tui, submit/list/decide/history, doctor, demo
 internal/protocol/          source-fact requests and bounded NDJSON envelopes
 internal/adapters/cursor/   bounded native JSON input and translation
 internal/coordinator/      decisions, durable transitions, deadlines, cancellation
 internal/transport/        private Unix-socket server and clients
 internal/analysis/         reserved for shell syntax warnings
 internal/store/            SQLite history, embedded migrations, redacted display
-internal/tui/              reserved for terminal approval UI
+internal/tui/              live queue, stable selection, countdowns, keyboard review
 testdata/cursor/            synthetic, sanitized native payload
 testdata/protocol/          synthetic manual submission
 testdata/commands/          reserved for analyzer cases
@@ -113,6 +125,6 @@ examples/cursor-daemon/    disposable-project manual decision template
 docs/                      compatibility gate and milestone tracking
 ```
 
-The current flow is hook → private Unix socket → daemon ↔ CLI review. The terminal UI comes later. Authorization is separate from observed execution; no execution observation, rollback, or filesystem preview is provided.
+The current flow is hook → private Unix socket → daemon ↔ terminal UI or CLI review. Authorization is separate from observed execution; no execution observation, rollback, or filesystem preview is provided.
 
-Retention and the isolated 100-request reliability experiment are complete; see [measured results](docs/reliability.md). Snapshot/subscription support for the terminal UI is implemented. Next: the terminal screen with stable selection, countdowns, keyboard decisions and reconnect behavior. Live Cursor compatibility evidence remains a separate gate. See [development milestones](docs/development.md).
+Retention and the isolated 100-request reliability experiment are complete; see [measured results](docs/reliability.md). The terminal screen and its snapshot/subscription support are implemented. Next: bounded shell-syntax analysis with explainable warnings and labeled candidate paths. Live Cursor compatibility evidence remains a separate gate. See [development milestones](docs/development.md).
